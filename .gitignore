@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+app/node_modules/
+
+# Build output
+app/dist/
+app/.vite/
+
+# Environment files (sensitive)
+app/.env.local
+app/.env.*.local
+.env.local
+
+# Supabase local
+supabase/.temp/
+supabase/functions/.temp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code settings (may contain tokens)
+.claude/
+
+# Editor
+.vscode/settings.json
+*.suo
+*.user

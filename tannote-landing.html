@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ทันโน้ต — กดปุ่มเดียว ที่เหลือ AI จัดให้</title>
+<meta name="description" content="แอป AI ที่คุณแค่กดปุ่มเดียวแล้วพูด — AI ถอดเสียง สรุป จัดหมวด และจดจำคุณ กลายเป็นเพื่อนและเลขาส่วนตัว">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Sarabun:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --red:#E24B4A; --red-dark:#C13534; --cream:#FAFAF7; --ink:#1F1D1A;
+  --ink-soft:#5A554D; --line:#E8E4DC; --gold:#D9A441; --teal:#1D9E75;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:'Sarabun',sans-serif;background:var(--cream);color:var(--ink);line-height:1.7;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+h1,h2,h3,.display{font-family:'IBM Plex Sans Thai',sans-serif}
+.wrap{max-width:1140px;margin:0 auto;padding:0 24px}
+.btn{display:inline-flex;align-items:center;gap:8px;background:var(--red);color:#fff;border:none;padding:15px 32px;border-radius:14px;font-family:'IBM Plex Sans Thai',sans-serif;font-weight:600;font-size:1.05rem;cursor:pointer;text-decoration:none;transition:transform .15s,box-shadow .15s;box-shadow:0 6px 20px rgba(226,75,74,.28)}
+.btn:hover{transform:translateY(-2px);box-shadow:0 10px 28px rgba(226,75,74,.38)}
+.btn-ghost{background:transparent;color:var(--red);box-shadow:none;border:1.5px solid var(--red)}
+.btn-ghost:hover{background:rgba(226,75,74,.06);box-shadow:none}
+
+/* NAV */
+nav{position:sticky;top:0;z-index:100;background:rgba(250,250,247,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.nav-in{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;max-width:1140px;margin:0 auto}
+.logo{font-family:'IBM Plex Sans Thai',sans-serif;font-weight:700;font-size:1.4rem;color:var(--ink);display:flex;align-items:center;gap:8px}
+.logo .dot{width:11px;height:11px;background:var(--red);border-radius:50%;display:inline-block}
+.nav-links{display:flex;gap:28px;align-items:center}
+.nav-links a{color:var(--ink-soft);text-decoration:none;font-size:.95rem;font-weight:500}
+.nav-links a:hover{color:var(--red)}
+@media(max-width:760px){.nav-links a:not(.btn){display:none}}
+
+/* HERO */
+.hero{padding:80px 0 70px;position:relative}
+.hero::before{content:"";position:absolute;top:-100px;right:-120px;width:480px;height:480px;background:radial-gradient(circle,rgba(226,75,74,.10),transparent 65%);border-radius:50%;z-index:0}
+.hero-in{position:relative;z-index:1;display:grid;grid-template-columns:1.1fr .9fr;gap:50px;align-items:center}
+@media(max-width:880px){.hero-in{grid-template-columns:1fr;gap:36px}}
+.badge{display:inline-flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--line);padding:7px 15px;border-radius:999px;font-size:.85rem;font-weight:500;color:var(--ink-soft);margin-bottom:22px}
+.badge .pulse{width:8px;height:8px;background:var(--teal);border-radius:50%;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.hero h1{font-size:3.3rem;line-height:1.15;font-weight:700;letter-spacing:-.01em;margin-bottom:20px}
+.hero h1 .hl{color:var(--red);position:relative}
+.hero p.lead{font-size:1.2rem;color:var(--ink-soft);margin-bottom:32px;max-width:520px}
+.hero-cta{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.hero-note{font-size:.9rem;color:var(--ink-soft);margin-top:18px;display:flex;align-items:center;gap:6px}
+
+/* phone mockup */
+.phone{background:var(--ink);border-radius:36px;padding:12px;box-shadow:0 30px 70px rgba(31,29,26,.28);max-width:300px;margin:0 auto;transform:rotate(2deg)}
+.phone-screen{background:var(--cream);border-radius:26px;overflow:hidden;aspect-ratio:9/18.5;display:flex;flex-direction:column}
+.ph-top{padding:18px 18px 10px;text-align:center;font-family:'IBM Plex Sans Thai';font-weight:600;font-size:.95rem;border-bottom:1px solid var(--line)}
+.ph-body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:20px}
+.ph-drop{width:100%;border:1px solid var(--line);background:#fff;border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;font-size:.85rem}
+.ph-mic{width:96px;height:96px;background:var(--red);border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(226,75,74,.4);animation:breathe 2.6s ease-in-out infinite}
+@keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+.ph-mic svg{width:40px;height:40px;fill:#fff}
+.ph-hint{font-size:.85rem;color:var(--ink-soft)}
+.ph-lock{font-size:.72rem;color:var(--ink-soft);padding-bottom:16px;text-align:center}
+
+/* SECTIONS */
+section{padding:72px 0}
+.sec-head{text-align:center;max-width:660px;margin:0 auto 50px}
+.sec-head .kicker{color:var(--red);font-weight:600;font-size:.9rem;letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px;font-family:'IBM Plex Sans Thai'}
+.sec-head h2{font-size:2.3rem;font-weight:700;line-height:1.2;margin-bottom:14px}
+.sec-head p{font-size:1.1rem;color:var(--ink-soft)}
+
+/* steps */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+@media(max-width:760px){.steps{grid-template-columns:1fr}}
+.step{background:#fff;border:1px solid var(--line);border-radius:20px;padding:30px 26px;position:relative}
+.step .num{font-family:'IBM Plex Sans Thai';font-weight:700;font-size:2.6rem;color:var(--red);opacity:.18;line-height:1}
+.step h3{font-size:1.25rem;margin:10px 0 8px;font-weight:600}
+.step p{color:var(--ink-soft);font-size:.98rem}
+
+/* features */
+.feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+@media(max-width:880px){.feat-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.feat-grid{grid-template-columns:1fr}}
+.feat{background:#fff;border:1px solid var(--line);border-radius:18px;padding:26px;transition:transform .18s,box-shadow .18s}
+.feat:hover{transform:translateY(-4px);box-shadow:0 14px 34px rgba(31,29,26,.08)}
+.feat .ic{width:48px;height:48px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;margin-bottom:16px;background:rgba(226,75,74,.1)}
+.feat h3{font-size:1.15rem;font-weight:600;margin-bottom:8px}
+.feat p{color:var(--ink-soft);font-size:.95rem}
+.feat.star{border:1.5px solid var(--red);position:relative}
+.feat.star::after{content:"⭐ เด่นสุด";position:absolute;top:-11px;right:18px;background:var(--red);color:#fff;font-size:.72rem;font-weight:600;padding:3px 12px;border-radius:999px;font-family:'IBM Plex Sans Thai'}
+
+/* who */
+.who-band{background:var(--ink);color:var(--cream)}
+.who-band .sec-head h2{color:#fff}
+.who-band .sec-head p{color:rgba(250,250,247,.7)}
+.who-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+@media(max-width:880px){.who-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:480px){.who-grid{grid-template-columns:1fr}}
+.who{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:22px}
+.who .e{font-size:1.7rem;margin-bottom:10px}
+.who h3{font-size:1.05rem;font-weight:600;margin-bottom:5px;font-family:'IBM Plex Sans Thai'}
+.who p{font-size:.88rem;color:rgba(250,250,247,.65)}
+
+/* pricing */
+.price-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+@media(max-width:880px){.price-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:480px){.price-grid{grid-template-columns:1fr}}
+.price{background:#fff;border:1px solid var(--line);border-radius:20px;padding:28px 22px;position:relative}
+.price.feat-plan{border:2px solid var(--red);box-shadow:0 16px 40px rgba(226,75,74,.14)}
+.price.feat-plan::before{content:"คุ้มสุด";position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--red);color:#fff;font-size:.78rem;font-weight:600;padding:4px 16px;border-radius:999px;font-family:'IBM Plex Sans Thai'}
+.price .pname{font-family:'IBM Plex Sans Thai';font-weight:600;font-size:1.1rem;margin-bottom:4px}
+.price .ptag{font-size:.82rem;color:var(--ink-soft);margin-bottom:14px}
+.price .pcost{font-family:'IBM Plex Sans Thai';font-weight:700;font-size:2rem;margin-bottom:2px}
+.price .pcost span{font-size:.9rem;font-weight:400;color:var(--ink-soft)}
+.price ul{list-style:none;margin-top:18px;display:flex;flex-direction:column;gap:9px}
+.price li{font-size:.9rem;color:var(--ink-soft);display:flex;gap:8px;align-items:flex-start}
+.price li::before{content:"✓";color:var(--teal);font-weight:700;flex-shrink:0}
+.price-note{text-align:center;margin-top:22px;color:var(--ink-soft);font-size:.92rem}
+.feat-banner{background:rgba(29,158,117,.08);border:1px solid rgba(29,158,117,.25);border-radius:14px;padding:14px 20px;text-align:center;margin-bottom:30px;color:#0F6E56;font-weight:500;font-size:.95rem}
+
+/* waitlist / CTA */
+.cta-band{background:linear-gradient(135deg,var(--red),var(--red-dark));color:#fff;text-align:center}
+.cta-band h2{font-size:2.4rem;font-weight:700;margin-bottom:14px}
+.cta-band p{font-size:1.15rem;opacity:.92;max-width:540px;margin:0 auto 32px}
+.wait-form{display:flex;gap:10px;max-width:460px;margin:0 auto;flex-wrap:wrap;justify-content:center}
+.wait-form input{flex:1;min-width:220px;padding:15px 18px;border-radius:13px;border:none;font-family:'Sarabun';font-size:1rem;outline:none}
+.wait-form .btn{background:var(--ink);box-shadow:none}
+.wait-form .btn:hover{background:#000}
+.cta-note{margin-top:16px;font-size:.88rem;opacity:.8}
+.cta-success{display:none;background:rgba(255,255,255,.15);border-radius:14px;padding:20px;max-width:460px;margin:0 auto;font-size:1.05rem}
+
+/* footer */
+footer{background:var(--ink);color:rgba(250,250,247,.6);padding:40px 0;text-align:center;font-size:.9rem}
+footer .logo{color:#fff;justify-content:center;margin-bottom:12px}
+.reveal{opacity:0;transform:translateY(24px);transition:opacity .6s,transform .6s}
+.reveal.in{opacity:1;transform:none}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-in">
+    <div class="logo"><span class="dot"></span>ทันโน้ต</div>
+    <div class="nav-links">
+      <a href="#how">วิธีใช้</a>
+      <a href="#features">ความสามารถ</a>
+      <a href="#pricing">ราคา</a>
+      <a href="#waitlist" class="btn">เริ่มใช้ฟรี</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap hero-in">
+    <div>
+      <div class="badge"><span class="pulse"></span>เปิดให้ลงทะเบียนล่วงหน้าแล้ว</div>
+      <h1>กดปุ่มเดียว<br><span class="hl">ที่เหลือ AI จัดให้</span></h1>
+      <p class="lead">แค่พูด — ทันโน้ตจะถอดเสียง สรุป จัดหมวด และจดจำคุณ กลายเป็นเพื่อนและเลขาส่วนตัวที่อยู่เคียงข้างทุกวัน</p>
+      <div class="hero-cta">
+        <a href="#waitlist" class="btn">ลงทะเบียนใช้ฟรี →</a>
+        <a href="#how" class="btn btn-ghost">ดูวิธีใช้</a>
+      </div>
+      <div class="hero-note">🔒 เสียงของคุณอยู่ในมือถือคุณ — เราเก็บแค่บันทึกที่ AI สรุปให้</div>
+    </div>
+    <div>
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="ph-top">บันทึกใหม่</div>
+          <div class="ph-body">
+            <div class="ph-drop"><span>👥 การประชุม</span><span>▾</span></div>
+            <div class="ph-mic"><svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg></div>
+            <div class="ph-hint">แตะเพื่อเริ่มอัด</div>
+          </div>
+          <div class="ph-lock">🔒 เสียงเก็บในเครื่องคุณเท่านั้น</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="how">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="kicker">ง่ายใน 3 ขั้น</div>
+      <h2>ไม่ต้องจด ไม่ต้องพิมพ์ แค่พูด</h2>
+      <p>ทันโน้ตทำงานหนักแทนคุณ ตั้งแต่กดปุ่มแรก</p>
+    </div>
+    <div class="steps">
+      <div class="step reveal"><div class="num">01</div><h3>กดปุ่ม แล้วพูด</h3><p>เลือกประเภท (หรือให้ AI เลือกให้) แล้วกดอัด พูดได้ยาวถึง 9.5 ชั่วโมง</p></div>
+      <div class="step reveal"><div class="num">02</div><h3>AI จัดการให้</h3><p>ถอดเสียงไทยคุณภาพสูง สรุปประเด็น ดึงสิ่งที่ต้องทำ ติดแท็กอัตโนมัติ</p></div>
+      <div class="step reveal"><div class="num">03</div><h3>เชื่อมโยง + จดจำ</h3><p>AI เชื่อมโน้ตที่เกี่ยวข้อง เตือนคุณผ่าน LINE และรู้จักคุณดีขึ้นทุกวัน</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="features" style="background:#fff">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="kicker">ความสามารถ</div>
+      <h2>ไม่ใช่แค่เครื่องอัดเสียง<br>แต่เป็นสมองที่สองของคุณ</h2>
+      <p>ทุกแพลนใช้ได้ครบทุกฟีเจอร์ — ต่างกันแค่ปริมาณ</p>
+    </div>
+    <div class="feat-grid">
+      <div class="feat reveal"><div class="ic">🎙️</div><h3>กดปุ่มเดียว ถอดเสียง</h3><p>ภาษาไทยคุณภาพสูง แยกผู้พูด ประชุมยาวแค่ไหนก็ได้</p></div>
+      <div class="feat reveal"><div class="ic">📋</div><h3>สรุป + สิ่งที่ต้องทำ</h3><p>อ่านสรุปใน 30 วินาที พร้อม action items และกำหนดส่ง</p></div>
+      <div class="feat reveal star"><div class="ic">🕸️</div><h3>เชื่อมโยงความคิด</h3><p>AI เชื่อมโน้ตที่เกี่ยวข้องให้อัตโนมัติ แบบ Obsidian แต่ไม่ต้องทำเอง</p></div>
+      <div class="feat reveal"><div class="ic">💬</div><h3>ถามโน้ตเก่าได้</h3><p>"ลูกค้าตกลงราคาเท่าไหร่นะ?" — AI ตอบจากโน้ตที่ผ่านมา</p></div>
+      <div class="feat reveal"><div class="ic">🔔</div><h3>เตือนผ่าน LINE</h3><p>เตือนนัด งาน กิจวัตร และทักทายคุณเหมือนเพื่อนที่ใส่ใจ</p></div>
+      <div class="feat reveal"><div class="ic">🧠</div><h3>ยิ่งใช้ ยิ่งรู้ใจ</h3><p>AI จดจำคุณ (ที่คุณอนุญาต) — แนะนำได้ตรงใจขึ้นเรื่อยๆ</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="who-band" id="who">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="kicker" style="color:#F0997B">เหมาะกับใคร</div>
+      <h2>ทุกคนที่พูดได้มากกว่าที่จดทัน</h2>
+      <p>ตั้งแต่คนทำงาน ครีเอเตอร์ นักเรียน ยันการใช้ในชีวิตประจำวัน</p>
+    </div>
+    <div class="who-grid">
+      <div class="who reveal"><div class="e">💼</div><h3>คนทำงาน/เซลส์</h3><p>บันทึกประชุม สายลูกค้า ไม่พลาดดีล</p></div>
+      <div class="who reveal"><div class="e">✍️</div><h3>ครีเอเตอร์</h3><p>พูดไอเดีย → ได้คอนเทนต์ ไม่ลืมไอเดีย</p></div>
+      <div class="who reveal"><div class="e">🎓</div><h3>นักเรียน/ครู</h3><p>อัดเลคเชอร์ → สรุป + ติว</p></div>
+      <div class="who reveal"><div class="e">🏠</div><h3>ใช้ส่วนตัว</h3><p>ไดอารี่เสียง บันทึกชีวิต เพื่อนคุย</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="pricing">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="kicker">ราคา</div>
+      <h2>เริ่มฟรี อัปเกรดเมื่อพร้อม</h2>
+      <p>ทุกแพลนได้ใช้ครบทุกฟีเจอร์ — เลือกแพลนที่ใช่กับการใช้งานของคุณ</p>
+    </div>
+    <div class="feat-banner reveal">🎁 ทุกแพลนเข้าถึงทุกฟีเจอร์ — ต่างกันแค่ปริมาณการใช้</div>
+    <div class="price-grid">
+      <div class="price reveal">
+        <div class="pname">ฟรี</div><div class="ptag">ลองให้ครบ</div>
+        <div class="pcost">0฿</div>
+        <ul><li>อัด 60 นาที/เดือน</li><li>เก็บโน้ต 30 วัน</li><li>Ask Notes 10 ครั้ง</li><li>ทุกฟีเจอร์ (จำกัดปริมาณ)</li></ul>
+      </div>
+      <div class="price reveal">
+        <div class="pname">Starter</div><div class="ptag">ใช้จริงเบาๆ</div>
+        <div class="pcost">199฿<span>/ด.</span></div>
+        <ul><li>อัด 800 นาที/เดือน</li><li>เก็บโน้ต 1 ปี</li><li>Ask Notes 150 ครั้ง</li><li>+ ภาษาอังกฤษ · Export PDF</li></ul>
+      </div>
+      <div class="price feat-plan reveal">
+        <div class="pname">Pro</div><div class="ptag">ใช้จริงจัง</div>
+        <div class="pcost">399฿<span>/ด.</span></div>
+        <ul><li>อัด 2,500 นาที/เดือน</li><li>เก็บตลอดชีพ</li><li>Ask Notes ไม่จำกัด</li><li>+ 4 ภาษา · Export ทุกแบบ</li></ul>
+      </div>
+      <div class="price reveal">
+        <div class="pname">Extra</div><div class="ptag">+ เก็บเสียง cloud</div>
+        <div class="pcost">599฿<span>/ด.</span></div>
+        <ul><li>อัดไม่จำกัด</li><li>Backup เสียงขึ้น cloud</li><li>ฟังข้ามเครื่องได้</li><li>+ AI Coach · Premium PDF</li></ul>
+      </div>
+    </div>
+    <p class="price-note reveal">🎁 100 คนแรกที่อัปเกรด ล็อกราคาพิเศษตลอดชีพ</p>
+  </div>
+</section>
+
+<section class="cta-band" id="waitlist">
+  <div class="wrap">
+    <div class="reveal">
+      <h2>เป็นคนแรกที่ได้ใช้</h2>
+      <p>ลงทะเบียนรับสิทธิ์ใช้ฟรีก่อนใคร + ราคาพิเศษสำหรับผู้ลงทะเบียนล่วงหน้า</p>
+      <form class="wait-form" id="waitForm" onsubmit="return submitWait(event)">
+        <input type="text" id="waitInput" placeholder="LINE ID หรือ อีเมล" required>
+        <button type="submit" class="btn">ลงทะเบียน</button>
+      </form>
+      <div class="cta-success" id="waitSuccess">🎉 ขอบคุณครับ! เราจะแจ้งคุณทันทีที่เปิดให้ใช้</div>
+      <div class="cta-note">ฟรี ไม่มีข้อผูกมัด · ยกเลิกได้ทุกเมื่อ</div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="logo"><span class="dot"></span>ทันโน้ต</div>
+    <p>เพื่อน และเลขา ส่วนตัวของคุณ · รับฟัง จดจำ ช่วยจัดการ</p>
+    <p style="margin-top:8px;opacity:.5">© 2026 TanNote</p>
+  </div>
+</footer>
+
+<script>
+function submitWait(e){
+  e.preventDefault();
+  var v=document.getElementById('waitInput').value.trim();
+  if(!v)return false;
+  // TODO: เชื่อม backend จริง (Supabase waitlist table หรือ LINE OA)
+  document.getElementById('waitForm').style.display='none';
+  document.getElementById('waitSuccess').style.display='block';
+  return false;
+}
+var io=new IntersectionObserver(function(es){
+  es.forEach(function(en){if(en.isIntersecting)en.target.classList.add('in')})
+},{threshold:.12});
+document.querySelectorAll('.reveal').forEach(function(el,i){
+  el.style.transitionDelay=(i%3*0.08)+'s';
+  io.observe(el);
+});
+</script>
+</body>
+</html>

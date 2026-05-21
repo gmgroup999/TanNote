@@ -1,0 +1,123 @@
+import { useEffect, useState } from 'react';
+import { fetchUsage, type UsageSummary } from '../lib/api';
+import { PLAN_LIMITS, PLAN_INFO, usageColor, usageRecommendation, type Plan } from '../config/plans';
+
+function Bar({ label, used, limit, unit }: {
+  label: string; used: number; limit: number | null; unit: string;
+}) {
+  const pct       = limit ? Math.min(1, used / limit) * 100 : 0;
+  const colorClass = usageColor(used, limit);
+  const labelText  = limit === null
+    ? `${used} ${unit} (ไม่จำกัด)`
+    : `${used}/${limit} ${unit}`;
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex justify-between items-center">
+        <span className="text-xs text-gray-600 dark:text-gray-400">{label}</span>
+        <span className={`text-[11px] font-medium ${
+          limit && used / limit >= 0.85 ? 'text-red-600' :
+          limit && used / limit >= 0.6  ? 'text-amber-600' : 'text-gray-500'
+        }`}>
+          {labelText}
+        </span>
+      </div>
+      {limit !== null && (
+        <div className="h-1.5 rounded-full bg-gray-100 dark:bg-[#333336] overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all ${colorClass}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function UsageIndicator({ onOpenPricing }: { onOpenPricing?: () => void }) {
+  const [usage, setUsage]     = useState<UsageSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchUsage().then(setUsage).finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="animate-pulse h-20 bg-gray-50 dark:bg-[#1E1E20] rounded-2xl border border-gray-100 dark:border-[#333336]" />
+    );
+  }
+
+  if (!usage) return null;
+
+  const plan    = usage.plan as Plan;
+  const limits  = PLAN_LIMITS[plan] ?? PLAN_LIMITS.free;
+  const info    = PLAN_INFO[plan]   ?? PLAN_INFO.free;
+
+  const recommendation = usageRecommendation(
+    plan,
+    { used: usage.recording_minutes, limit: limits.recording_minutes },
+    { used: usage.ask_notes_count,   limit: limits.ask_notes },
+  );
+
+  return (
+    <div className="bg-white dark:bg-[#252527] rounded-2xl border border-gray-100 dark:border-[#333336] shadow-sm p-4 flex flex-col gap-3">
+      {/* Plan badge */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-gray-500 dark:text-gray-500 uppercase tracking-wide">แผนปัจจุบัน</span>
+          <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${
+            plan === 'pro' || plan === 'extra'
+              ? 'bg-[#E24B4A]/10 text-[#E24B4A]'
+              : 'bg-gray-100 dark:bg-[#333336] text-gray-600 dark:text-gray-400'
+          }`}>
+            {info.label}
+          </span>
+        </div>
+        <span className="text-[10px] text-gray-400 dark:text-gray-600">
+          {new Date().toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}
+        </span>
+      </div>
+
+      {/* Progress bars */}
+      <div className="flex flex-col gap-2.5">
+        <Bar
+          label="🎙 บันทึกเสียง"
+          used={usage.recording_minutes}
+          limit={limits.recording_minutes}
+          unit="นาที/ด."
+        />
+        <Bar
+          label="💬 ถามโน้ต"
+          used={usage.ask_notes_count}
+          limit={limits.ask_notes}
+          unit="ครั้ง/ด."
+        />
+        <Bar
+          label="🤖 AI แนะนำแท็ก"
+          used={usage.ai_suggest_count}
+          limit={limits.ai_suggest}
+          unit="ครั้ง/ด."
+        />
+      </div>
+
+      {/* Smart recommendation */}
+      {recommendation && (
+        <div className="bg-amber-50 rounded-xl px-3 py-2 flex items-start gap-2 border border-amber-100">
+          <span className="text-amber-500 mt-0.5 text-sm flex-shrink-0">⚠️</span>
+          <p className="text-xs text-amber-700 leading-snug">{recommendation}</p>
+        </div>
+      )}
+
+      {/* Upgrade button */}
+      {(plan === 'free' || plan === 'starter') && onOpenPricing && (
+        <button
+          onClick={onOpenPricing}
+          className="text-xs text-[#E24B4A] font-medium hover:underline text-left"
+        >
+          ดูแพลนทั้งหมด →
+        </button>
+      )}
+    </div>
+  );
+}
