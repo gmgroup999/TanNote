@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { PLAN_INFO, PLAN_LIMITS, EARLY_BIRD_TOTAL, EARLY_BIRD_TAKEN, type Plan } from '../config/plans';
+import PaymentModal from '../components/PaymentModal';
 
 const PLANS: Plan[] = ['free', 'starter', 'pro'];
 const EARLY_BIRD_LEFT = EARLY_BIRD_TOTAL - EARLY_BIRD_TAKEN;
@@ -20,6 +22,8 @@ function CheckRow({ label, available = true }: { label: string; available?: bool
 }
 
 export default function PricingPage({ onBack }: { onBack: () => void }) {
+  const [payModal, setPayModal] = useState<'starter' | 'pro' | null>(null);
+
   return (
     <div className="min-h-svh bg-[#FAFAF7] dark:bg-[#18181A]">
       {/* Header */}
@@ -144,22 +148,20 @@ export default function PricingPage({ onBack }: { onBack: () => void }) {
 
                 {/* CTA */}
                 {plan === 'free' ? (
-                  <div className="w-full py-3 rounded-xl text-sm font-medium bg-gray-100 text-gray-500 text-center">
+                  <div className="w-full py-3 rounded-xl text-sm font-medium bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-center">
                     แผนปัจจุบัน
                   </div>
                 ) : (
-                  <a
-                    href="https://line.me/R/ti/p/@077vkaxj"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`block w-full py-3 rounded-xl text-sm font-semibold text-center transition-colors ${
+                  <button
+                    onClick={() => setPayModal(plan as 'starter' | 'pro')}
+                    className={`w-full py-3 rounded-xl text-sm font-semibold text-center transition-colors ${
                       isPopular
                         ? 'bg-[#E24B4A] text-white hover:bg-[#C73B3A]'
-                        : 'bg-gray-900 text-white hover:bg-gray-700'
+                        : 'bg-gray-900 dark:bg-gray-700 text-white hover:bg-gray-700 dark:hover:bg-gray-600'
                     }`}
                   >
-                    อัพเกรดเป็น {info.label}
-                  </a>
+                    อัปเกรดเป็น {info.label}
+                  </button>
                 )}
               </div>
             </div>
@@ -173,6 +175,10 @@ export default function PricingPage({ onBack }: { onBack: () => void }) {
           )}
         </p>
       </main>
+
+      {payModal && (
+        <PaymentModal plan={payModal} onClose={() => setPayModal(null)} />
+      )}
     </div>
   );
 }
