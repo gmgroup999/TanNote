@@ -48,6 +48,7 @@ function TypeSelector({
   const [open, setOpen] = useState(false);
   const [hoveredKey, setHoveredKey] = useState<RecordingTypeKey | null>(null);
   const [tooltipTop, setTooltipTop] = useState(0);
+  const [tooltipSide, setTooltipSide] = useState<'right' | 'left'>('right');
   const rootRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
 
@@ -71,6 +72,9 @@ function TypeSelector({
       const itemRect = item.getBoundingClientRect();
       const rootRect = root.getBoundingClientRect();
       setTooltipTop(itemRect.top - rootRect.top);
+      // tooltip width = 208px (w-52) + 8px gap — show left if right edge would overflow
+      const spaceRight = window.innerWidth - rootRect.right;
+      setTooltipSide(spaceRight >= 216 ? 'right' : 'left');
     }
   }
 
@@ -111,11 +115,16 @@ function TypeSelector({
         </div>
       )}
 
-      {/* Hover tooltip — positioned right of the root div, aligned to the hovered item */}
+      {/* Hover tooltip — right if space available, left otherwise */}
       {open && hovered && hoveredKey && (
         <div
-          className="absolute left-[calc(100%+8px)] z-50 w-52 rounded-xl bg-white dark:bg-[#252527] border border-gray-200 dark:border-[#444448] shadow-xl p-3 pointer-events-none"
-          style={{ top: tooltipTop }}
+          className="absolute z-50 w-52 rounded-xl bg-white dark:bg-[#252527] border border-gray-200 dark:border-[#444448] shadow-xl p-3 pointer-events-none"
+          style={{
+            top: tooltipTop,
+            ...(tooltipSide === 'right'
+              ? { left: 'calc(100% + 8px)' }
+              : { right: 'calc(100% + 8px)' }),
+          }}
         >
           <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1.5">
             {hovered.label}
