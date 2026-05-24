@@ -19,7 +19,7 @@ Vite + React + TS + Tailwind v4 / LINE LIFF / Supabase / Gemini 2.5 Flash / Hetz
 free: 60น./30วัน/ask10/suggest5
 starter(199): 800น./1ปี/ask150/suggest50
 pro(399): 2500น./ตลอดชีพ/∞
-extra(599): ∞ + cloud backup
+extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก PricingPage; assign ผ่าน Admin Panel เท่านั้น)
 
 ## เอกสารอ้างอิง
 - [TANNOTE_MASTER.md](TANNOTE_MASTER.md) — Master document: ภาพรวม, ฟีเจอร์, ราคา, สถาปัตยกรรม
@@ -149,6 +149,10 @@ extra(599): ∞ + cloud backup
 - **Bug 3 (plan_expires_at ไม่ real-time)**: คำนวณ effective plan ทุก request — Starter ที่หมดอายุ treat เป็น free ทันทีโดยไม่ต้องรอ pg_cron
 - **Bug 4 (security definer)**: `increment_ask_count` rebuild ด้วย `security definer` ให้ consistent กับ RPC อื่น
 
+### Extra Plan — Admin Only — เสร็จแล้ว (2026-05-26)
+- `PricingPage.tsx`: PLANS array เปลี่ยนจาก `['free','starter','pro','extra']` → `['free','starter','pro']`
+- Extra plan ซ่อนจาก UI ผู้ใช้ทั่วไป; logic ใน DB + Edge Functions ยังครบ (admin assign ผ่าน Admin Panel ได้)
+
 ---
 
 ## ไฟล์สำคัญ
@@ -231,6 +235,7 @@ extra(599): ∞ + cloud backup
 | `ask` redeployed | is_suspended + plan_expires_at + `currentPeriod()` |
 | Migration `20260526000001` applied | `npx supabase db push` |
 | commit `c7f6f55` | push → github.com/gmgroup999/TanNote ✅ |
+| commit `c91d584` | Extra plan hidden + LandingPage.md → push + Z-Node deploy ✅ |
 
 ---
 
@@ -241,6 +246,7 @@ extra(599): ∞ + cloud backup
 | `app/src/pages/RemindersPage.tsx` | **ไฟล์ใหม่** — แท็บนัดหมาย: fetch, overdue แดง, delete |
 | `app/src/App.tsx` | + `'reminders'` ใน Tab type; nav item ระฆัง; import + routing RemindersPage |
 | `LandingPage.md` | **ไฟล์ใหม่** — Landing page brief: brand, hero, features, pricing, FAQ, page structure |
+| `app/src/pages/PricingPage.tsx` | PLANS array ตัด `'extra'` ออก — Extra ซ่อนจาก user ทั่วไป |
 | `supabase/functions/transcribe/index.ts` | select `is_suspended, plan_expires_at`; suspension check 403; effective plan; รวม usage query; ai_suggest quota check + increment |
 | `supabase/functions/ask/index.ts` | select `is_suspended, plan_expires_at`; suspension check 403; effective plan; ใช้ `currentPeriod()` |
 | `supabase/migrations/20260526000001_fix_increment_ask_security.sql` | **ไฟล์ใหม่** — rebuild `increment_ask_count` ด้วย `security definer` |
@@ -502,12 +508,6 @@ extra(599): ∞ + cloud backup
 
 ## TODO ถัดไป
 
-### Redeploy บน Z-Node (รอ user action)
-commit `c7f6f55` push แล้ว — ต้อง trigger redeploy บน Z-Node/Coolify เพื่อให้ mobile ได้ RemindersPage + plan enforcement fixes:
-```
-Z-Node → TanNote → Redeploy
-```
-
 ### ทดสอบ Plan Enforcement end-to-end
 1. ทดสอบ `is_suspended`: suspend user ผ่าน Admin Panel → ลองอัดเสียง → ต้องได้ 403
 2. ทดสอบ `ai_suggest` quota: free user อัด 5 ครั้ง → ครั้งที่ 6 ต้องได้ quota exceeded
@@ -536,7 +536,6 @@ Z-Node → TanNote → Redeploy
 
 | ปัญหา | รายละเอียด | วิธีแก้ |
 |---|---|---|
-| Z-Node ยังไม่ได้ redeploy | commit `c7f6f55` push แล้ว — mobile ยังเห็น version เก่า | Trigger redeploy บน Coolify/Z-Node |
 | รูปโปรไฟล์ user เก่าไม่มี | picture_url ว่างใน DB สำหรับ user ที่ยังไม่ได้บันทึกใหม่หลัง deploy | รอ user บันทึกเสียงครั้งใหม่ (transcribe upsert อัตโนมัติ) |
 | ไมโครโฟน ถามทุก session | Android WebView ไม่ persist mic permission ข้าม session — OS limitation | แก้ไม่ได้ใน code; user กด "อนุญาตเฉพาะครั้งนี้" ทุกครั้งที่เปิด LINE ใหม่ |
 | ระบบชำระเงินยังไม่มี | plan change ทำได้เฉพาะผ่าน admin มือ | integrate payment webhook ในอนาคต |
