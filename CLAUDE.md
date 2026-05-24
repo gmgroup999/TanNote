@@ -149,6 +149,12 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 - **Bug 3 (plan_expires_at ไม่ real-time)**: คำนวณ effective plan ทุก request — Starter ที่หมดอายุ treat เป็น free ทันทีโดยไม่ต้องรอ pg_cron
 - **Bug 4 (security definer)**: `increment_ask_count` rebuild ด้วย `security definer` ให้ consistent กับ RPC อื่น
 
+### ระบบชำระเงิน (Payment Modal) — เสร็จแล้ว (2026-05-26)
+- `PaymentModal.tsx` — modal แสดง QR PromptPay + ราคา (รองรับ Early Bird) + ขั้นตอน 4 ขั้น + copy LINE ID
+- `PricingPage.tsx` — ปุ่ม "อัปเกรด" เปิด modal แทนลิงก์ LINE โดยตรง
+- `app/public/qr-payment.png` — QR Thai QR Payment (PromptPay) ของจีเอ็มกรุ๊ป
+- Flow: user กด → modal → สแกน QR → โอน → แจ้ง LINE @077vkaxj พร้อมสลิป → admin เปลี่ยน plan ใน Admin Panel
+
 ### Extra Plan — Admin Only — เสร็จแล้ว (2026-05-26)
 - `PricingPage.tsx`: PLANS array เปลี่ยนจาก `['free','starter','pro','extra']` → `['free','starter','pro']`
 - Extra plan ซ่อนจาก UI ผู้ใช้ทั่วไป; logic ใน DB + Edge Functions ยังครบ (admin assign ผ่าน Admin Panel ได้)
@@ -246,7 +252,9 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 | `app/src/pages/RemindersPage.tsx` | **ไฟล์ใหม่** — แท็บนัดหมาย: fetch, overdue แดง, delete |
 | `app/src/App.tsx` | + `'reminders'` ใน Tab type; nav item ระฆัง; import + routing RemindersPage |
 | `LandingPage.md` | **ไฟล์ใหม่** — Landing page brief: brand, hero, features, pricing, FAQ, page structure |
-| `app/src/pages/PricingPage.tsx` | PLANS array ตัด `'extra'` ออก — Extra ซ่อนจาก user ทั่วไป |
+| `app/src/pages/PricingPage.tsx` | PLANS array ตัด `'extra'` ออก; ปุ่มอัปเกรดเปิด PaymentModal |
+| `app/src/components/PaymentModal.tsx` | **ไฟล์ใหม่** — QR modal + ราคา + ขั้นตอน + copy LINE ID + LINE CTA |
+| `app/public/qr-payment.png` | **ไฟล์ใหม่** — QR Thai QR Payment (PromptPay) จีเอ็มกรุ๊ป |
 | `supabase/functions/transcribe/index.ts` | select `is_suspended, plan_expires_at`; suspension check 403; effective plan; รวม usage query; ai_suggest quota check + increment |
 | `supabase/functions/ask/index.ts` | select `is_suspended, plan_expires_at`; suspension check 403; effective plan; ใช้ `currentPeriod()` |
 | `supabase/migrations/20260526000001_fix_increment_ask_security.sql` | **ไฟล์ใหม่** — rebuild `increment_ask_count` ด้วย `security definer` |
@@ -538,5 +546,5 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 |---|---|---|
 | รูปโปรไฟล์ user เก่าไม่มี | picture_url ว่างใน DB สำหรับ user ที่ยังไม่ได้บันทึกใหม่หลัง deploy | รอ user บันทึกเสียงครั้งใหม่ (transcribe upsert อัตโนมัติ) |
 | ไมโครโฟน ถามทุก session | Android WebView ไม่ persist mic permission ข้าม session — OS limitation | แก้ไม่ได้ใน code; user กด "อนุญาตเฉพาะครั้งนี้" ทุกครั้งที่เปิด LINE ใหม่ |
-| ระบบชำระเงินยังไม่มี | plan change ทำได้เฉพาะผ่าน admin มือ | integrate payment webhook ในอนาคต |
+| ระบบชำระเงิน auto-verify ยังไม่มี | ปัจจุบัน manual verify ผ่าน LINE + admin panel; auto-webhook เป็น optional อนาคต | integrate payment webhook ถ้าต้องการ scale |
 | Landing page ยังไม่ได้สร้าง | มีข้อมูลใน `LandingPage.md` แล้ว แต่ยังไม่มี HTML จริง | สร้าง static HTML หรือ route ใน React |
