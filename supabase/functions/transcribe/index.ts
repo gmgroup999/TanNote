@@ -39,14 +39,15 @@ const CORS_HEADERS = {
 
 // ─── Recording type config ────────────────────────────────────────────────────
 const TYPE_FOCUS: Record<string, string> = {
-  meeting:   "มติ + action items + ผู้รับผิดชอบ",
-  sales:     "order, ราคา, นัดหมาย, follow-up",
-  idea:      "จัดกลุ่มความคิด, เชื่อมไอเดียเก่า",
-  lecture:   "หัวข้อหลัก, key points, สิ่งที่ควรจำ",
-  interview: "คำถาม-คำตอบ, ประเด็นสำคัญ",
-  diary:     "เหตุการณ์, อารมณ์ความรู้สึก, โทนอบอุ่น",
-  general:   "ถอดและสรุปแบบกลางๆ",
-  auto:      "วิเคราะห์ context แล้วเลือกประเภทเอง",
+  meeting:     "มติ + action items + ผู้รับผิดชอบ",
+  appointment: "วัน เวลา สถานที่ ผู้เข้าร่วม สิ่งที่ต้องเตรียม — สร้าง reminder อัตโนมัติ",
+  sales:       "order, ราคา, นัดหมาย, follow-up",
+  idea:        "จัดกลุ่มความคิด, เชื่อมไอเดียเก่า",
+  lecture:     "หัวข้อหลัก, key points, สิ่งที่ควรจำ",
+  interview:   "คำถาม-คำตอบ, ประเด็นสำคัญ",
+  diary:       "เหตุการณ์, อารมณ์ความรู้สึก, โทนอบอุ่น",
+  general:     "ถอดและสรุปแบบกลางๆ",
+  auto:        "วิเคราะห์ context แล้วเลือกประเภทเอง",
 };
 
 // ─── Guardrails (ขอบเขตเพื่อน/เลขา) ─────────────────────────────────────────
@@ -197,8 +198,19 @@ Deno.serve(async (req: Request) => {
     // ── 5. Build prompt (Phase 3+5: structured_tags + reminders) ───────────
     const focus      = TYPE_FOCUS[recType] ?? TYPE_FOCUS.general;
     const autoClause = recType === "auto"
-      ? `วิเคราะห์ว่าเนื้อหาเป็นประเภทใด (meeting|sales|idea|lecture|interview|diary|general) แล้วใส่ใน detected_type`
+      ? `วิเคราะห์ว่าเนื้อหาเป็นประเภทใด แล้วใส่ใน detected_type โดยใช้นิยามต่อไปนี้:
+- meeting: ประชุมภายในทีม/องค์กร มีมติ action items ผู้รับผิดชอบ
+- appointment: นัดหมายส่วนตัวหรือกับบุคคลภายนอก มีวัน/เวลา/สถานที่ เช่น หมอ ลูกค้า นัดเจอ สัมมนา กิจกรรม
+- sales: คุยกับลูกค้า ขายสินค้า/บริการ order ราคา
+- idea: brainstorm ความคิดสร้างสรรค์ แผนการ
+- lecture: เรียน อบรม ฟังบรรยาย จดโน้ต
+- interview: สัมภาษณ์งาน เก็บข้อมูล Q&A
+- diary: บันทึกส่วนตัว ความรู้สึก เหตุการณ์ประจำวัน
+- general: ไม่เข้าพวกใดข้างต้น`
       : `ประเภท: ${recType} — เน้น: ${focus}`;
+    const appointmentClause = recType === "appointment"
+      ? `\n[นัดหมาย]: สกัดวันเวลา สถานที่ ผู้เข้าร่วม และสิ่งที่ต้องเตรียมให้ครบ แล้วสร้าง reminder ใน "reminders" อย่างน้อย 1 รายการ (type="appointment") โดยใช้เวลาจริงในเนื้อหา ถ้าไม่ระบุเวลาชัดให้ตั้งเป็น 15 นาทีก่อนกิจกรรม`
+      : ``;
 
     const nowBKK = new Date();
     const currentDatetimeTH = new Intl.DateTimeFormat("th-TH", {
@@ -222,7 +234,7 @@ Deno.serve(async (req: Request) => {
 ถอดเสียงและวิเคราะห์เนื้อหาต่อไปนี้ ตอบเป็น JSON เท่านั้น ไม่มีข้อความอื่น:
 ${langInstruction}
 
-${autoClause}
+${autoClause}${appointmentClause}
 
 {
   "detected_type": "meeting|sales|idea|lecture|interview|diary|general",

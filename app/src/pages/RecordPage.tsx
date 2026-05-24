@@ -149,6 +149,7 @@ export default function RecordPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastSavedId, setLastSavedId] = useState<string | null>(null);
   const [aiStep, setAiStep] = useState<AiStep | null>(null);
+  const [reminderCount, setReminderCount] = useState(0);
   const [storageWarning, setStorageWarning] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -213,6 +214,8 @@ export default function RecordPage() {
 
   const startRecording = useCallback(async () => {
     setError(null);
+    setAiStep(null);
+    setReminderCount(0);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
@@ -311,8 +314,10 @@ export default function RecordPage() {
         actions:      result.action_items.map((a) => a.task),
         hashtags:     result.tags,
         sentiment:    result.sentiment,
+        reminders:    result.reminders,
       };
       await updateAudioRecord(lastSavedId, patch);
+      setReminderCount(result.reminders?.length ?? 0);
       setAiStep('done');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'เกิดข้อผิดพลาด';
@@ -514,8 +519,14 @@ export default function RecordPage() {
         )}
 
         {savedCount > 0 && state === 'idle' && aiStep === 'done' && (
-          <div className="w-full rounded-xl bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
-            ✅ ถอดเสียงและวิเคราะห์เสร็จแล้ว — ดูผลได้ที่หน้ารายการ
+          <div className="w-full rounded-xl bg-green-50 border border-green-200 px-4 py-3 flex flex-col gap-1">
+            <p className="text-sm text-green-700">✅ ถอดเสียงและวิเคราะห์เสร็จแล้ว — ดูผลได้ที่หน้ารายการ</p>
+            {reminderCount > 0 && (
+              <p className="text-xs text-green-600 flex items-center gap-1">
+                <span>📅</span>
+                <span>ตั้งการแจ้งเตือน {reminderCount} รายการผ่าน LINE แล้ว</span>
+              </p>
+            )}
           </div>
         )}
       </main>
