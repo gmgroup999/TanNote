@@ -201,12 +201,12 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 - **Project ref**: `czczwtjgmjnboeeibxcd`
 - **URL**: `https://czczwtjgmjnboeeibxcd.supabase.co`
 - **Production URL**: `https://tannote.z-node.cc` (deployed บน Z-Node/Coolify)
-- **Secrets set**: `GEMINI_API_KEY`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET`, `ADMIN_EMAILS`, `NODE_ID` ✅
-- **Functions deployed**: `transcribe`, `ask`, `send-reminders`, `line-webhook`, `save-memory`, `admin-api`, `patch-note`, `r2-backup` ✅ (transcribe + ask redeployed 2026-05-26)
+- **Secrets set**: `GEMINI_API_KEY`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET` ⚠️ (ยังผิด — ต้องอัปเดต), `ADMIN_EMAILS`, `NODE_ID`, `ADMIN_LINE_USER_ID=U8414fbb78490e5c27a1b52ee7dc4593b` ✅
+- **Functions deployed**: `transcribe`, `ask`, `send-reminders`, `line-webhook`, `save-memory`, `admin-api`, `patch-note`, `r2-backup` ✅ (line-webhook redeployed 2026-05-26 — payment notify + /myid)
 - **Extensions enabled**: `pg_cron`, `pg_net`, `pgvector`
 - **pg_cron job**: schedule id 1 — ทุก 1 นาที → `send-reminders`; schedule `enforce-plan-expiry` — ทุกชั่วโมง → downgrade Starter ที่หมดอายุ
 - **LINE Webhook URL**: `https://czczwtjgmjnboeeibxcd.supabase.co/functions/v1/line-webhook` ✅ (active)
-- **LINE bot basicId**: `@077vkaxj`
+- **LINE bot**: `@077vkaxj` = `@tannote` (บัญชีเดียวกัน) — Admin LINE User ID: `U8414fbb78490e5c27a1b52ee7dc4593b`
 - **SMTP**: Resend — smtp.resend.com:465, sender: `onboarding@resend.dev`
 - **Migrations applied**: ทั้งหมดถึง `20260526000001_fix_increment_ask_security.sql` ✅
 
@@ -242,6 +242,18 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 | Migration `20260526000001` applied | `npx supabase db push` |
 | commit `c7f6f55` | push → github.com/gmgroup999/TanNote ✅ |
 | commit `c91d584` | Extra plan hidden + LandingPage.md → push + Z-Node deploy ✅ |
+| commit `a6ca96a` | PaymentModal + PricingPage upgrade button ✅ |
+| commit `3ef68c4` | qr-payment.png → Z-Node deploy ✅ |
+| commit `005e921` | CLAUDE.md update ✅ |
+
+### LINE Webhook — Payment Notification (2026-05-26 ช่วงบ่าย)
+| งาน | ผล |
+|---|---|
+| `line-webhook` เพิ่ม message event handler | รับข้อความ/รูป → ตอบ "รับทราบ รอ 24 ชม." → push แจ้ง admin ทันที |
+| เพิ่ม `/myid` command | ส่ง `/myid` → bot ตอบ LINE User ID กลับมา (ใช้หา admin ID) |
+| เพิ่ม `pushText()` helper | push ข้อความไปหา LINE User ID ที่ระบุได้ |
+| ตั้ง `ADMIN_LINE_USER_ID` secret | `U8414fbb78490e5c27a1b52ee7dc4593b` (Jack Zurapong) |
+| พบ bug: signature mismatch | `LINE_CHANNEL_SECRET` ใน Supabase ผิด — ยังไม่ได้แก้ (ค้างไว้พรุ่งนี้) |
 
 ---
 
@@ -258,6 +270,7 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 | `supabase/functions/transcribe/index.ts` | select `is_suspended, plan_expires_at`; suspension check 403; effective plan; รวม usage query; ai_suggest quota check + increment |
 | `supabase/functions/ask/index.ts` | select `is_suspended, plan_expires_at`; suspension check 403; effective plan; ใช้ `currentPeriod()` |
 | `supabase/migrations/20260526000001_fix_increment_ask_security.sql` | **ไฟล์ใหม่** — rebuild `increment_ask_count` ด้วย `security definer` |
+| `supabase/functions/line-webhook/index.ts` | + message event handler; + `/myid` command; + `pushText()` helper; + admin push notify |
 
 ---
 
@@ -514,14 +527,28 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 
 ---
 
-## TODO ถัดไป
+## TODO ถัดไป / พรุ่งนี้มาทำต่อ
 
-### ทดสอบ Plan Enforcement end-to-end
+### 🔴 เร่งด่วน — แก้ LINE_CHANNEL_SECRET (ทำก่อนเลย)
+**อาการ**: webhook รับ event ได้แต่ signature mismatch → ไม่ตอบกลับ message ใดๆ
+**วิธีแก้**:
+1. ไปที่ LINE OA Manager → บัญชี @tannote → **ตั้งค่า → Messaging API → Channel secret** → คัดลอก
+2. รัน: `npx supabase secrets set LINE_CHANNEL_SECRET=<ค่าที่คัดลอก>`
+3. รัน: `npx supabase functions deploy line-webhook --no-verify-jwt`
+4. ส่ง `/myid` ใน LINE ทดสอบ → ถ้าตอบกลับ = สำเร็จ
+
+### 🟡 ทดสอบ Payment Notification flow (หลังแก้ secret)
+1. ลูกค้าทดสอบส่งสลิป/ข้อความใน LINE @tannote
+2. ตรวจว่า: bot ตอบ "รับทราบ รอ 24 ชม." ✓
+3. ตรวจว่า: admin (Jack) ได้รับ push แจ้งเตือนใน LINE ส่วนตัว ✓
+4. Admin เปิด Admin Panel เปลี่ยน plan ให้ user
+
+### 🟡 ทดสอบ Plan Enforcement end-to-end
 1. ทดสอบ `is_suspended`: suspend user ผ่าน Admin Panel → ลองอัดเสียง → ต้องได้ 403
 2. ทดสอบ `ai_suggest` quota: free user อัด 5 ครั้ง → ครั้งที่ 6 ต้องได้ quota exceeded
 3. ทดสอบ `plan_expires_at`: ตั้ง expires_at ให้เป็นอดีตผ่าน DB → อัดเสียง → ต้องใช้ limit ของ free
 
-### ทดสอบ LINE Reminder end-to-end
+### 🟡 ทดสอบ LINE Reminder end-to-end
 1. เปิดแอปผ่าน LINE (LIFF) — LIFF user ID จะถูก set อัตโนมัติ
 2. บันทึกโน้ต ประเภท "📅 นัดหมาย" พูดระบุวันเวลาชัดเจน
 3. รอ pg_cron 1 นาที → ดู LINE message
@@ -532,11 +559,7 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 - ตัดสินใจ: ทำเป็น static HTML แยก หรือ route ใน React SPA
 
 ### รูปโปรไฟล์ใน Admin Panel
-รูปจะแสดงหลังจาก user บันทึกเสียงอย่างน้อย 1 ครั้งหลัง deploy ใหม่ (transcribe จะ upsert picture_url ลง DB) — ยังไม่มีทางดึง picture_url ของ user เก่าโดยไม่มี action ใหม่
-
-### ระบบชำระเงิน (อนาคต)
-- ปัจจุบัน: admin เปลี่ยน plan ให้ user ด้วยมือผ่าน Admin Panel
-- อนาคต: PromptPay QR / Stripe → webhook → `update_plan` API
+รูปจะแสดงหลังจาก user บันทึกเสียงอย่างน้อย 1 ครั้งหลัง deploy ใหม่ — ยังไม่มีทางดึง picture_url ของ user เก่าโดยไม่มี action ใหม่
 
 ---
 
@@ -544,7 +567,9 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 
 | ปัญหา | รายละเอียด | วิธีแก้ |
 |---|---|---|
+| 🔴 LINE_CHANNEL_SECRET ผิด | signature mismatch ทุก message event → webhook ไม่ตอบ → payment notify ไม่ทำงาน | ไปที่ LINE OA Manager → @tannote → Messaging API → คัดลอก Channel secret → `supabase secrets set` |
 | รูปโปรไฟล์ user เก่าไม่มี | picture_url ว่างใน DB สำหรับ user ที่ยังไม่ได้บันทึกใหม่หลัง deploy | รอ user บันทึกเสียงครั้งใหม่ (transcribe upsert อัตโนมัติ) |
 | ไมโครโฟน ถามทุก session | Android WebView ไม่ persist mic permission ข้าม session — OS limitation | แก้ไม่ได้ใน code; user กด "อนุญาตเฉพาะครั้งนี้" ทุกครั้งที่เปิด LINE ใหม่ |
 | ระบบชำระเงิน auto-verify ยังไม่มี | ปัจจุบัน manual verify ผ่าน LINE + admin panel; auto-webhook เป็น optional อนาคต | integrate payment webhook ถ้าต้องการ scale |
+| Landing page ยังไม่ได้สร้าง | มีข้อมูลใน `LandingPage.md` แล้ว แต่ยังไม่มี HTML จริง | สร้าง static HTML หรือ route ใน React |
 | Landing page ยังไม่ได้สร้าง | มีข้อมูลใน `LandingPage.md` แล้ว แต่ยังไม่มี HTML จริง | สร้าง static HTML หรือ route ใน React |

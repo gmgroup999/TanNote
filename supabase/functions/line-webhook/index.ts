@@ -1,17 +1,20 @@
 /**
  * TanNote — /api/line-webhook
- * รับ LINE webhook postback: action=done|snooze&id=UUID
+ * รับ LINE webhook: postback (done/snooze reminders) + message (payment notify)
  * Deploy: supabase functions deploy line-webhook --no-verify-jwt
  *
- * Secrets: LINE_CHANNEL_SECRET, LINE_CHANNEL_ACCESS_TOKEN, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+ * Secrets: LINE_CHANNEL_SECRET, LINE_CHANNEL_ACCESS_TOKEN,
+ *          SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
+ *          ADMIN_LINE_USER_ID (personal LINE ID ของ admin สำหรับรับแจ้งเตือน)
  */
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const LINE_SECRET   = Deno.env.get("LINE_CHANNEL_SECRET")!;
-const LINE_TOKEN    = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN")!;
-const SUPABASE_URL  = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SVC  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const LINE_SECRET    = Deno.env.get("LINE_CHANNEL_SECRET")!;
+const LINE_TOKEN     = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN")!;
+const SUPABASE_URL   = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SVC   = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const ADMIN_LINE_ID  = Deno.env.get("ADMIN_LINE_USER_ID") ?? "";
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
@@ -45,13 +48,23 @@ async function verifySignature(body: string, sig: string): Promise<boolean> {
   }
 }
 
-// ─── LINE reply helper ────────────────────────────────────────────────────────
+// ─── LINE reply helper (ตอบกลับ user ผ่าน replyToken) ───────────────────────
 async function replyText(replyToken: string, text: string) {
   if (!LINE_TOKEN || !replyToken) return;
   await fetch("https://api.line.me/v2/bot/message/reply", {
     method:  "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${LINE_TOKEN}` },
     body:    JSON.stringify({ replyToken, messages: [{ type: "text", text }] }),
+  }).catch(() => {});
+}
+
+// ─── LINE push helper (ส่งตรงถึง LINE User ID ที่ระบุ) ───────────────────────
+async function pushText(to: string, text: string) {
+  if (!LINE_TOKEN || !to) return;
+  await fetch("https://api.line.me/v2/bot/message/push", {
+    method:  "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${LINE_TOKEN}` },
+    body:    JSON.stringify({ to, messages: [{ type: "text", text }] }),
   }).catch(() => {});
 }
 
@@ -81,34 +94,68 @@ Deno.serve(async (req: Request) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SVC);
 
   for (const event of payload.events ?? []) {
-    if (event.type !== "postback") continue;
-
-    const params     = new URLSearchParams(event.postback?.data ?? "");
-    const action     = params.get("action");
-    const id         = params.get("id");
     const replyToken = event.replyToken as string;
     const lineUserId = event.source?.userId as string | undefined;
 
-    if (!action || !id || !lineUserId) continue;
+    // ─── Postback: reminder done / snooze ─────────────────────────────────────
+    if (event.type === "postback") {
+      const params = new URLSearchParams(event.postback?.data ?? "");
+      const action = params.get("action");
+      const id     = params.get("id");
 
-    if (action === "done") {
-      const { error } = await supabase
-        .from("reminders")
-        .update({ status: "done" })
-        .eq("id", id)
-        .eq("line_user_id", lineUserId);
+      if (!action || !id || !lineUserId) continue;
 
-      if (!error) await replyText(replyToken, "✓ เสร็จเรียบร้อย! เยี่ยมมากเลย 🎉");
+      if (action === "done") {
+        const { error } = await supabase
+          .from("reminders")
+          .update({ status: "done" })
+          .eq("id", id)
+          .eq("line_user_id", lineUserId);
 
-    } else if (action === "snooze") {
-      const snoozeUntil = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-      const { error } = await supabase
-        .from("reminders")
-        .update({ remind_at: snoozeUntil, status: "pending" })
-        .eq("id", id)
-        .eq("line_user_id", lineUserId);
+        if (!error) await replyText(replyToken, "✓ เสร็จเรียบร้อย! เยี่ยมมากเลย 🎉");
 
-      if (!error) await replyText(replyToken, "⏰ เลื่อนออกไป 1 ชั่วโมงแล้วนะ");
+      } else if (action === "snooze") {
+        const snoozeUntil = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+        const { error } = await supabase
+          .from("reminders")
+          .update({ remind_at: snoozeUntil, status: "pending" })
+          .eq("id", id)
+          .eq("line_user_id", lineUserId);
+
+        if (!error) await replyText(replyToken, "⏰ เลื่อนออกไป 1 ชั่วโมงแล้วนะ");
+      }
+      continue;
+    }
+
+    // ─── Message: ข้อความ / รูป จาก user ─────────────────────────────────────
+    if (event.type === "message" && lineUserId) {
+      const msgType  = event.message?.type as string;
+      const msgText  = msgType === "text" ? (event.message?.text as string ?? "") : "";
+
+      // /myid — ส่งคำสั่งนี้เพื่อดู LINE User ID
+      if (msgText.trim() === "/myid") {
+        console.log("[line-webhook] /myid from", lineUserId);
+        await replyText(replyToken, `LINE User ID ของคุณ:\n${lineUserId}`);
+        continue;
+      }
+
+      // ตอบกลับ user ทันที
+      await replyText(
+        replyToken,
+        "ขอบคุณที่ติดต่อมาค่ะ 🙏\n\nทีมงานได้รับข้อความของคุณแล้ว จะตรวจสอบสลิปและอัปเกรดแพลนให้ภายใน 24 ชั่วโมงนะคะ\n\nหากมีข้อสงสัยเพิ่มเติม ทีมงานจะติดต่อกลับค่ะ"
+      );
+
+      // Push แจ้ง admin ทันที
+      if (ADMIN_LINE_ID && lineUserId !== ADMIN_LINE_ID) {
+        const preview = msgType === "image"
+          ? "📷 ส่งรูปมา (น่าจะเป็นสลิป)"
+          : `💬 "${msgText.slice(0, 80)}"`;
+        await pushText(
+          ADMIN_LINE_ID,
+          `💰 มีแจ้งชำระเงิน!\n\nจาก LINE ID:\n${lineUserId}\n\n${preview}\n\n→ เปลี่ยน plan ได้ที่ Admin Panel`
+        );
+      }
+      continue;
     }
   }
 
