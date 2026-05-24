@@ -90,6 +90,36 @@ extra(599): ∞ + cloud backup
 - Auth identity: LIFF user = `U<32>` in localStorage; email user = `sa_<supabase_uuid>`
 - Security: client-side `VITE_ADMIN_EMAILS` controls UI visibility only; server always re-verifies via `ADMIN_EMAILS` secret
 
+### Admin Panel — Rich User Info — เสร็จแล้ว (2026-05-25)
+- `users_profile` เพิ่ม `picture_url` column (migration `20260525000001`)
+- `admin_list_users` RPC v4: คืน `picture_url`, `primary_use`, `tone`, `email` (join `auth.users` สำหรับ `sa_` users), `last_sign_in_at`
+- `liff.ts`: บันทึก `pictureUrl` + `displayName` ลง localStorage หลัง LIFF init + login
+- `api.ts`: ส่ง `x-line-picture-url` + `x-line-display-name` headers ทุก transcribe call
+- `transcribe`: upsert `picture_url` + `display_name` เข้า `users_profile` จาก headers
+- `AdminPage.tsx`: แสดงรูปโปรไฟล์ (img + fallback initial), email, primary_use tags, tone badge, วันที่สมัคร, last sign-in
+
+### ประเภทการบันทึก + Reminder Pipeline — เสร็จแล้ว (2026-05-25)
+- เพิ่มประเภท `appointment` (📅 นัดหมาย) ใน `recordingTypes.ts` + `TYPE_FOCUS` + `RECORDING_TYPE_ORDER`
+- AI auto-detection prompt อัปเดต: นิยามชัดสำหรับแต่ละประเภท แยก appointment vs meeting ได้ถูกต้อง
+- `appointmentClause` ใน transcribe: บังคับสร้าง reminder ≥1 รายการสำหรับประเภท appointment
+- Bug fix: `RecordPage.runAiOnLast()` บันทึก `result.reminders` ลง IndexedDB (ก่อนหน้านี้หายไป)
+- แสดง reminder count ในหน้า success: "📅 ตั้งการแจ้งเตือน N รายการผ่าน LINE แล้ว"
+- `PricingPage`: แก้ LINE upgrade URL จาก `@tannote` → `@077vkaxj` (บัญชีจริง)
+
+### LINE Bot + Webhook — เสร็จแล้ว (2026-05-25)
+- `LINE_CHANNEL_ACCESS_TOKEN` อัปเดตเป็น token ใหม่ (token เก่า invalid)
+- ตั้ง Webhook URL ผ่าน LINE Messaging API: `https://czczwtjgmjnboeeibxcd.supabase.co/functions/v1/line-webhook`
+- Webhook `active: true` ✅ ยืนยันผ่าน `curl https://api.line.me/v2/bot/info`
+
+### Email + Magic Link — เสร็จแล้ว (2026-05-25)
+- Resend custom SMTP ตั้งค่าแล้ว: smtp.resend.com:465, user=`resend`, from=`onboarding@resend.dev`
+- Magic link ส่งจาก "ทันโน้ต" email แล้ว (ไม่ limit 3/ชม. อีกต่อไป)
+- `supabase/config.toml` อัปเดต `site_url = "https://tannote.z-node.cc"` + `additional_redirect_urls`
+- **หมายเหตุ**: Supabase Dashboard → Authentication → URL Configuration ต้องตั้งด้วยมือแยกต่างหาก (ไม่ sync จาก config.toml อัตโนมัติ)
+
+### BOOT_ERROR fix — เสร็จแล้ว (2026-05-25)
+- `transcribe/index.ts`: duplicate `const language` ในบรรทัด 116 และ 287 → เปลี่ยนตัวที่สองเป็น `const detectedLanguage`
+
 ### UI/UX + Admin improvements — เสร็จแล้ว (2026-05-24)
 - **Responsive desktop layout**: RecordingsPage master-detail (lg+), RecordPage/SettingsPage max-w-xl, AskPage max-w-2xl
 - **RecordingsPage**: เพิ่ม `CompactListItem` + selected state; hashtag cloud ย้ายไปล่างรายการ; Note Graph เป็น default
@@ -114,23 +144,23 @@ extra(599): ∞ + cloud backup
 |---|---|
 | `app/src/App.tsx` | Bottom nav + tab routing + `useDarkMode` + auth gate + admin tab |
 | `app/src/index.css` | Tailwind v4 + `@variant dark` + IBM Plex Sans Thai + brand colors |
-| `app/src/pages/RecordPage.tsx` | หน้าบันทึกเสียง + AI trigger หลังบันทึก |
-| `app/src/pages/RecordingsPage.tsx` | รายการ + AI panel + batch + Knowledge Graph cloud |
+| `app/src/pages/RecordPage.tsx` | หน้าบันทึกเสียง + AI trigger + reminderCount display |
+| `app/src/pages/RecordingsPage.tsx` | รายการ + AI panel + batch + Knowledge Graph cloud (master-detail lg+) |
 | `app/src/pages/AskPage.tsx` | RAG chat + onboarding + memory view + sender name labels |
-| `app/src/pages/SettingsPage.tsx` | การแจ้งเตือน + quiet hours (LINE User ID ถูกซ่อนแล้ว) |
+| `app/src/pages/SettingsPage.tsx` | การแจ้งเตือน + quiet hours |
 | `app/src/pages/GraphViewPage.tsx` | Force-layout knowledge graph + `useDark` MutationObserver hook |
-| `app/src/pages/PricingPage.tsx` | แสดงแผนราคา + upgrade CTA |
+| `app/src/pages/PricingPage.tsx` | แสดงแผนราคา + upgrade CTA (LINE: @077vkaxj) |
 | `app/src/pages/LoginPage.tsx` | Magic link login form |
-| `app/src/pages/AdminPage.tsx` | Admin dashboard: stats, user list, plan/suspend/delete |
+| `app/src/pages/AdminPage.tsx` | Admin dashboard: stats, user list + profile pic/email/primary_use/tone/dates, plan/suspend/delete |
 | `app/src/components/UsageIndicator.tsx` | Progress bars สำหรับ quota ปัจจุบัน |
 | `app/src/lib/db.ts` | IndexedDB helpers + `AudioRecord` interface |
-| `app/src/lib/api.ts` | Frontend → Edge Function client |
-| `app/src/lib/liff.ts` | LIFF init + `getLiffUserId()` with dev fallback |
+| `app/src/lib/api.ts` | Frontend → Edge Function client (ส่ง x-line-picture-url/display-name headers) |
+| `app/src/lib/liff.ts` | LIFF init + userId/pictureUrl/displayName → localStorage |
 | `app/src/lib/auth.ts` | Supabase Auth client + `sendMagicLink`, `isAdminEmail`, `isLiffAuthed` |
-| `app/src/config/recordingTypes.ts` | 8 ประเภทการบันทึก + label + summaryFocus |
+| `app/src/config/recordingTypes.ts` | **9** ประเภทการบันทึก (รวม appointment) + label + description + summaryFocus |
 | `app/src/config/plans.ts` | Plan limits + PLAN_INFO + quota helpers |
 | `app/.env.local` | VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_LIFF_ID, VITE_ADMIN_EMAILS (gitignored) |
-| `supabase/functions/transcribe/index.ts` | Edge Function — Gemini transcribe + DB write + embed |
+| `supabase/functions/transcribe/index.ts` | Edge Function — Gemini transcribe + upsert picture_url/display_name + embed |
 | `supabase/functions/ask/index.ts` | Edge Function — RAG Q&A + user memory + local_notes merge |
 | `supabase/functions/send-reminders/index.ts` | Edge Function — pg_cron trigger → LINE push |
 | `supabase/functions/line-webhook/index.ts` | Edge Function — รับ LINE postback (done/snooze) |
@@ -138,18 +168,85 @@ extra(599): ∞ + cloud backup
 | `supabase/functions/_shared/plans.ts` | Plan limits shared logic |
 | `supabase/migrations/20260520000000_init.sql` | Full DB schema + RLS |
 | `supabase/migrations/20260521000006_auth_admin.sql` | is_suspended column + admin_list_users RPC |
-| `supabase/config.toml` | `verify_jwt = false` สำหรับ all functions |
+| `supabase/migrations/20260525000001_add_picture_url.sql` | picture_url column + admin_list_users RPC v4 |
+| `supabase/config.toml` | `verify_jwt = false` สำหรับ all functions; site_url = tannote.z-node.cc |
 | `Dockerfile` | Multi-stage build: node:22-alpine → nginx:alpine |
 | `nginx.conf` | SPA routing + cache headers + gzip |
 
 ## Supabase Project
 - **Project ref**: `czczwtjgmjnboeeibxcd`
 - **URL**: `https://czczwtjgmjnboeeibxcd.supabase.co`
+- **Production URL**: `https://tannote.z-node.cc` (deployed บน Z-Node/Coolify)
 - **Secrets set**: `GEMINI_API_KEY`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET`, `ADMIN_EMAILS`, `NODE_ID` ✅
-- **Functions deployed**: `transcribe`, `ask`, `send-reminders`, `line-webhook`, `save-memory`, `admin-api`, `patch-note`, `r2-backup` ✅ (redeployed 2026-05-24)
+- **Functions deployed**: `transcribe`, `ask`, `send-reminders`, `line-webhook`, `save-memory`, `admin-api`, `patch-note`, `r2-backup` ✅ (transcribe redeployed 2026-05-25)
 - **Extensions enabled**: `pg_cron`, `pg_net`, `pgvector`
 - **pg_cron job**: schedule id 1 — ทุก 1 นาที → `send-reminders`
-- **Migrations applied**: ทั้งหมดถึง `20260524000002_admin_list_users_v2.sql` ✅
+- **LINE Webhook URL**: `https://czczwtjgmjnboeeibxcd.supabase.co/functions/v1/line-webhook` ✅ (active)
+- **LINE bot basicId**: `@077vkaxj`
+- **SMTP**: Resend — smtp.resend.com:465, sender: `onboarding@resend.dev`
+- **Migrations applied**: ทั้งหมดถึง `20260525000001_add_picture_url.sql` ✅
+
+---
+
+## สิ่งที่ทำวันนี้ (2026-05-25)
+
+### BOOT_ERROR fix + Appointment Type
+| งาน | ผล |
+|---|---|
+| BOOT_ERROR: duplicate `const language` | เปลี่ยนตัวที่สองเป็น `const detectedLanguage` — transcribe deploy สำเร็จ |
+| เพิ่มประเภท `appointment` | `recordingTypes.ts` + `TYPE_FOCUS` + `RECORDING_TYPE_ORDER` (ตอนนี้มี 9 ประเภท) |
+| AI auto-detection อัปเดต | prompt ระบุนิยามชัดเจน แยก appointment (นัดส่วนตัว/ภายนอก) vs meeting (ประชุมทีม) |
+| `appointmentClause` | บังคับ AI สร้าง reminder ≥1 รายการสำหรับ appointment type |
+| Bug fix: reminders ไม่บันทึกลง IndexedDB | `RecordPage.runAiOnLast()` เพิ่ม `reminders: result.reminders` ใน patch |
+| แสดง reminder count | success screen แสดง "📅 ตั้งการแจ้งเตือน N รายการผ่าน LINE แล้ว" |
+
+### LINE Bot Pipeline
+| งาน | ผล |
+|---|---|
+| `LINE_CHANNEL_ACCESS_TOKEN` อัปเดต | token ใหม่ set ผ่าน `supabase secrets set` ✅ |
+| ตั้ง Webhook URL | `curl -X PUT` ผ่าน LINE Messaging API — `active: true` ✅ |
+| แก้ Webhook field name | ใช้ `"endpoint"` ไม่ใช่ `"webhookEndpointUrl"` |
+| `PricingPage` upgrade URL | แก้ `@tannote` → `@077vkaxj` (LINE bot จริง) |
+
+### Email + Magic Link
+| งาน | ผล |
+|---|---|
+| Resend SMTP ตั้งค่า | smtp.resend.com:465 / user=resend / from=onboarding@resend.dev |
+| `supabase/config.toml` | `site_url = "https://tannote.z-node.cc"` + redirect URLs |
+| Magic link ส่งได้แล้ว | ไม่ limit 3/ชม. อีกต่อไป; ส่งจาก "ทันโน้ต" |
+
+### Admin Panel — Rich User Info
+| งาน | ผล |
+|---|---|
+| `picture_url` column | migration `20260525000001_add_picture_url.sql` |
+| `admin_list_users` RPC v4 | คืน picture_url, primary_use, tone, email (auth.users join), last_sign_in_at |
+| `liff.ts` | บันทึก pictureUrl + displayName ลง localStorage; export `getLiffPictureUrl` + `getLiffDisplayName` |
+| `api.ts` | ส่ง `x-line-picture-url` + `x-line-display-name` headers ทุก transcribe call |
+| `transcribe` | upsert `picture_url` + `display_name` จาก headers เข้า users_profile |
+| `AdminPage.tsx` | รูปโปรไฟล์ (img + fallback), email, primary_use tags, tone badge, วันสมัคร, last seen |
+
+### Deploy ✅
+| งาน | ผล |
+|---|---|
+| `transcribe` redeployed | รองรับ appointment type + picture_url upsert |
+| Migration `20260525000001` applied | `npx supabase db push` |
+| Git push | commit `aefdb89` → github.com/gmgroup999/TanNote ✅ |
+
+---
+
+## ไฟล์ที่แก้ไขวันนี้ (2026-05-25)
+
+| ไฟล์ | สิ่งที่เปลี่ยน |
+|---|---|
+| `supabase/functions/transcribe/index.ts` | แก้ duplicate `const language` → `detectedLanguage`; + appointment TYPE_FOCUS + appointmentClause; + picture_url/display_name upsert; CORS headers เพิ่ม x-line-picture-url/display-name |
+| `app/src/config/recordingTypes.ts` | + `appointment` ประเภทใหม่ ใน type union, RECORDING_TYPES, RECORDING_TYPE_ORDER |
+| `app/src/pages/RecordPage.tsx` | + `reminderCount` state; fix `reminders` save ลง IndexedDB; success msg แสดง reminder count |
+| `app/src/pages/PricingPage.tsx` | แก้ upgrade URL `@tannote` → `@077vkaxj` |
+| `supabase/config.toml` | `site_url = "https://tannote.z-node.cc"` + redirect URLs ครบ |
+| `app/src/lib/liff.ts` | + `LINE_PICTURE_KEY`, `LINE_NAME_KEY`; บันทึก pictureUrl+displayName ใน initLiff+loginWithLiff; export `getLiffPictureUrl`, `getLiffDisplayName` |
+| `app/src/lib/api.ts` | import getLiffPictureUrl/DisplayName; ส่ง x-line-picture-url/display-name headers ใน transcribeAudio() |
+| `app/src/pages/AdminPage.tsx` | AdminUser interface + fields ใหม่; รูปโปรไฟล์ img; email row; primary_use/tone/dates row; search ครอบคลุม email |
+| `supabase/migrations/20260525000001_add_picture_url.sql` | **ไฟล์ใหม่** — ALTER TABLE add picture_url; CREATE OR REPLACE admin_list_users v4 |
 
 ---
 
@@ -339,43 +436,35 @@ extra(599): ∞ + cloud backup
 
 ## TODO ถัดไป
 
-### Deploy ขึ้น Coolify — ขั้นตอน (รอ user action)
-GitHub repo พร้อมแล้วที่: `https://github.com/gmgroup999/TanNote`
+### ตั้ง Supabase Dashboard URL Configuration (รอ user action — ด่วน)
+Magic link จะ redirect ไป localhost ถ้าไม่ตั้ง:
+1. Supabase Dashboard → Authentication → URL Configuration
+2. Site URL: `https://tannote.z-node.cc`
+3. Redirect URLs: เพิ่ม `https://tannote.z-node.cc/**`
 
-> **ก่อน deploy ต้อง git push code ล่าสุดขึ้น GitHub ก่อน**
-> ```bash
-> git add -A && git commit -m "UI improvements + admin panel + plan management"
-> git push origin main
-> ```
-
-1. Coolify → New Resource → Git Repository → เลือก `gmgroup999/TanNote`
-2. Build Pack: **Dockerfile** (Dockerfile อยู่ที่ root ✓)
-3. ตั้ง **Build Arguments** (Vite อ่านตอน build time — ใช้ Build Args ไม่ใช่ Env Vars):
-   ```
-   VITE_SUPABASE_URL=https://czczwtjgmjnboeeibxcd.supabase.co
-   VITE_SUPABASE_ANON_KEY=<anon key จาก .env.local>
-   VITE_LIFF_ID=2010157477-I2NTp3zI
-   VITE_ADMIN_EMAILS=zuraponx999@gmail.com
-   ```
-4. ตั้ง domain (เช่น `app.tannote.co`) → Enable HTTPS
-5. กด Deploy
-6. หลัง deploy: ตั้ง LIFF endpoint URL ใน LINE Developer Console = domain จริง
-
-### ตั้ง LINE Webhook URL (รอ user action)
+### Redeploy บน Z-Node หลัง git push (รอ user action)
+Code อัปเดตแล้วบน GitHub — ต้อง trigger redeploy บน Z-Node/Coolify เพื่อให้ mobile ได้ประเภท `appointment` และ admin panel ใหม่:
 ```
-LINE Developer Console → Messaging API → Webhook URL:
-https://czczwtjgmjnboeeibxcd.supabase.co/functions/v1/line-webhook
+Z-Node → TanNote → Redeploy (หรือ auto-deploy ถ้าตั้ง webhook ไว้)
 ```
 
-### ทดสอบ LINE Push end-to-end (หลัง deploy แล้ว)
-1. บันทึกโน้ตใหม่ที่มี action item → AI ถอดเสียง
-2. รอ pg_cron 1 นาที → ดู LINE message
-3. กดปุ่ม postback "เสร็จแล้ว" → verify ใน Supabase DB
+### ตั้ง LIFF Endpoint URL (รอ user action)
+```
+LINE Developer Console → LIFF → Endpoint URL = https://tannote.z-node.cc
+```
 
-### ระบบชำระเงิน (ยังไม่มี)
+### ทดสอบ LINE Reminder end-to-end
+1. เปิดแอปผ่าน LINE (LIFF) — LIFF user ID จะถูก set อัตโนมัติ
+2. บันทึกโน้ต ประเภท "📅 นัดหมาย" พูดระบุวันเวลาชัดเจน
+3. รอ pg_cron 1 นาที → ดู LINE message
+4. กดปุ่ม postback "เสร็จแล้ว" → verify ใน Supabase reminders table
+
+### รูปโปรไฟล์ใน Admin Panel
+รูปจะแสดงหลังจาก user บันทึกเสียงอย่างน้อย 1 ครั้งหลัง deploy ใหม่ (transcribe จะ upsert picture_url ลง DB) — ยังไม่มีทางดึง picture_url ของ user เก่าโดยไม่มี action ใหม่
+
+### ระบบชำระเงิน (อนาคต)
 - ปัจจุบัน: admin เปลี่ยน plan ให้ user ด้วยมือผ่าน Admin Panel
-- อนาคต: integrate payment gateway (PromptPay QR / Stripe) → webhook → `update_plan` API
-- จนกว่าจะมีระบบชำระเงิน: user แจ้งแล้ว admin เปลี่ยนให้ผ่าน Admin Panel
+- อนาคต: PromptPay QR / Stripe → webhook → `update_plan` API
 
 ---
 
@@ -383,8 +472,10 @@ https://czczwtjgmjnboeeibxcd.supabase.co/functions/v1/line-webhook
 
 | ปัญหา | รายละเอียด | วิธีแก้ |
 |---|---|---|
-| ยังไม่ได้ deploy บน Coolify | app รันบน localhost เท่านั้น | ทำตามขั้นตอน Coolify ด้านบน (ต้อง git push ก่อน) |
-| LINE webhook ยังไม่ได้ configure | postback "เสร็จ/เลื่อน" ยังไม่ทำงาน | LINE Developer Console → Webhook URL |
-| LIFF endpoint URL ยังไม่ได้ตั้ง | LINE auto-login ยังไม่ทำงาน | ตั้งหลังได้ domain จริงจาก Coolify |
+| Supabase Dashboard URL ยังไม่ได้ตั้ง | magic link redirect ไป localhost ถ้าเข้าจาก production | Dashboard → Auth → URL Configuration → ตั้ง site_url + redirect |
+| Z-Node ยังไม่ได้ redeploy | mobile ยังเห็น version เก่า (ไม่มี appointment, admin ใหม่) | Trigger redeploy บน Coolify/Z-Node |
+| LIFF Endpoint URL ยังไม่ได้ตั้ง | LINE auto-login ยังใช้ endpoint เก่า | LINE Developer Console → LIFF → Endpoint URL |
+| รูปโปรไฟล์ user เก่าไม่มี | picture_url ว่างอยู่ใน DB สำหรับ user ที่ยังไม่ได้บันทึกใหม่ | รอ user บันทึกเสียงครั้งใหม่ (transcribe จะ upsert อัตโนมัติ) |
+| ไมโครโฟน ถามทุก session | LINE WebView (Android) ไม่ persist mic permission ข้าม session — เป็น OS limitation | ไม่สามารถแก้ได้ใน code; user ต้องกด "อนุญาตเฉพาะครั้งนี้" ทุกครั้ง |
 | ระบบชำระเงินยังไม่มี | plan change ทำได้เฉพาะผ่าน admin มือ | integrate payment webhook ในอนาคต |
 | TypeSelector tooltip อาจออกนอกจอ | บน viewport แคบ 768-1023px tooltip อาจถูกตัด | ไม่กระทบ mobile (hover ไม่ทำงาน); desktop ปกติ |
