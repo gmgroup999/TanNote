@@ -149,7 +149,7 @@ export default function PricingPage({ onBack }: { onBack: () => void }) {
                   </div>
                 ) : (
                   <a
-                    href="https://line.me/R/ti/p/@tannote"
+                    href="https://line.me/R/ti/p/@077vkaxj"
                     target="_blank"
                     rel="noopener noreferrer"
                     className={`block w-full py-3 rounded-xl text-sm font-semibold text-center transition-colors ${
