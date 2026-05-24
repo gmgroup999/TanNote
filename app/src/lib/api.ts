@@ -3,7 +3,7 @@
  * Gemini API key ไม่ถูกเปิดเผยใน frontend เลย
  */
 import type { AudioRecord, StructuredTag, SuggestedLink, ReminderItem } from './db';
-import { getLiffUserId, setLineUserId } from './liff';
+import { getLiffUserId, getLiffPictureUrl, getLiffDisplayName, setLineUserId } from './liff';
 
 const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -86,11 +86,18 @@ export async function transcribeAudio(
 
   onProgress?.("processing");
 
+  const extraHeaders: Record<string, string> = {};
+  const pic  = getLiffPictureUrl();
+  const name = getLiffDisplayName();
+  if (pic)  extraHeaders["x-line-picture-url"]  = pic;
+  if (name) extraHeaders["x-line-display-name"] = name;
+
   const res = await fetch(url, {
     method:  "POST",
     headers: {
       ...authHeaders(),
       "x-line-user-id": getLiffUserId(),
+      ...extraHeaders,
     },
     body: form,
   });

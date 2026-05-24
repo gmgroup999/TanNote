@@ -33,7 +33,7 @@ const MAX_INLINE_BYTES = 20 * 1024 * 1024; // 20 MB → above this use Files API
 // ─── CORS ────────────────────────────────────────────────────────────────────
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin":  "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-line-user-id",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-line-user-id, x-line-picture-url, x-line-display-name",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -115,7 +115,9 @@ Deno.serve(async (req: Request) => {
     const durationSec = Number(formData.get("duration_seconds") ?? 0);
     const localId     = (formData.get("local_audio_id") as string | null) ?? "";
     const language    = (formData.get("language") as string | null) ?? "th";
-    const lineUserId  = req.headers.get("x-line-user-id") ?? "anonymous";
+    const lineUserId   = req.headers.get("x-line-user-id")   ?? "anonymous";
+    const pictureUrl   = req.headers.get("x-line-picture-url")  ?? null;
+    const displayName  = req.headers.get("x-line-display-name") ?? null;
 
     if (!audioFile || audioFile.size === 0) {
       return respond({ error: "ไม่พบไฟล์เสียง หรือไฟล์ว่างเปล่า" }, 400);
@@ -125,9 +127,13 @@ Deno.serve(async (req: Request) => {
     const supabase  = createClient(SUPABASE_URL, SUPABASE_SVC);
 
     // ── 2. Upsert user ──────────────────────────────────────────────────────
+    const profilePatch: Record<string, unknown> = { node_id: NODE_ID, line_user_id: lineUserId };
+    if (pictureUrl)  profilePatch.picture_url  = pictureUrl;
+    if (displayName) profilePatch.display_name = displayName;
+
     const { data: userRow } = await supabase
       .from("users_profile")
-      .upsert({ node_id: NODE_ID, line_user_id: lineUserId }, { onConflict: "line_user_id" })
+      .upsert(profilePatch, { onConflict: "line_user_id" })
       .select("id, plan")
       .single();
     const userId: string | null = userRow?.id ?? null;

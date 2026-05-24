@@ -17,6 +17,11 @@ interface AdminUser {
   line_user_id:      string;
   nickname:          string | null;
   display_name:      string | null;
+  picture_url:       string | null;
+  primary_use:       string[] | null;
+  tone:              string | null;
+  email:             string | null;
+  last_sign_in_at:   string | null;
   plan:              string;
   plan_expires_at:   string | null;
   is_suspended:      boolean;
@@ -159,7 +164,8 @@ export default function AdminPage({ session }: { session: Session }) {
     const matchSearch = !q
       || (u.nickname ?? '').toLowerCase().includes(q)
       || u.line_user_id.toLowerCase().includes(q)
-      || (u.display_name ?? '').toLowerCase().includes(q);
+      || (u.display_name ?? '').toLowerCase().includes(q)
+      || (u.email ?? '').toLowerCase().includes(q);
     const matchPlan = planFilter === 'all' || u.plan === planFilter;
     return matchSearch && matchPlan;
   });
@@ -268,13 +274,17 @@ export default function AdminPage({ session }: { session: Session }) {
                   u.is_suspended ? 'border-red-200 dark:border-red-900 opacity-60' : 'border-gray-100 dark:border-[#333336]'
                 }`}
               >
-                {/* Avatar */}
-                <div className="w-10 h-10 rounded-full bg-[#E24B4A]/10 flex items-center justify-center text-[#E24B4A] font-bold text-sm flex-shrink-0">
-                  {(u.nickname ?? u.line_user_id).charAt(0).toUpperCase()}
+                {/* Avatar / Profile pic */}
+                <div className="w-12 h-12 rounded-full flex-shrink-0 overflow-hidden bg-[#E24B4A]/10 flex items-center justify-center text-[#E24B4A] font-bold text-base">
+                  {u.picture_url
+                    ? <img src={u.picture_url} alt="" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    : (u.nickname ?? u.display_name ?? u.line_user_id).charAt(0).toUpperCase()
+                  }
                 </div>
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
+                  {/* Row 1: name + badges */}
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
                       {u.nickname ?? u.display_name ?? '—'}
@@ -296,14 +306,42 @@ export default function AdminPage({ session }: { session: Session }) {
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-gray-400 dark:text-gray-600 truncate mt-0.5">
+                  {/* Row 2: LINE ID / email */}
+                  <p className="text-[11px] text-gray-400 dark:text-gray-600 truncate mt-0.5 font-mono">
                     {u.line_user_id}
                   </p>
+                  {u.email && (
+                    <p className="text-[11px] text-blue-400 dark:text-blue-500 truncate">
+                      {u.email}
+                    </p>
+                  )}
+                  {/* Row 3: usage stats */}
                   <div className="flex gap-3 mt-1 text-[10px] text-gray-400 dark:text-gray-600">
-                    <span>📝 {u.note_count} notes</span>
+                    <span>📝 {u.note_count}</span>
                     <span>🎙 {u.recording_minutes}น.</span>
-                    <span>💬 {u.ask_notes_count} asks</span>
-                    {u.ai_suggest_count > 0 && <span>✨ {u.ai_suggest_count} suggest</span>}
+                    <span>💬 {u.ask_notes_count}</span>
+                    {u.ai_suggest_count > 0 && <span>✨ {u.ai_suggest_count}</span>}
+                  </div>
+                  {/* Row 4: primary_use + tone + dates */}
+                  <div className="flex flex-wrap gap-1.5 mt-1.5 items-center">
+                    {u.primary_use?.map((use) => (
+                      <span key={use} className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-[#333336] text-gray-500 dark:text-gray-400">
+                        {use}
+                      </span>
+                    ))}
+                    {u.tone && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-[#1A2A3A] text-blue-500 dark:text-blue-400">
+                        {u.tone}
+                      </span>
+                    )}
+                    <span className="text-[10px] text-gray-300 dark:text-gray-700">
+                      สมัคร {new Intl.DateTimeFormat('th-TH', { dateStyle: 'short', timeZone: 'Asia/Bangkok' }).format(new Date(u.created_at))}
+                    </span>
+                    {u.last_sign_in_at && (
+                      <span className="text-[10px] text-gray-300 dark:text-gray-700">
+                        · ล่าสุด {new Intl.DateTimeFormat('th-TH', { dateStyle: 'short', timeZone: 'Asia/Bangkok' }).format(new Date(u.last_sign_in_at))}
+                      </span>
+                    )}
                   </div>
                 </div>
 

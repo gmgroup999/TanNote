@@ -1,9 +1,11 @@
 import liff from '@line/liff';
 
-const LIFF_ID        = import.meta.env.VITE_LIFF_ID as string | undefined;
-const LIFF_ENABLED   = Boolean(LIFF_ID && LIFF_ID !== 'your-liff-id-here');
-const LINE_USER_KEY  = 'tannote_line_user_id';
-const SIGNED_OUT_KEY = 'tannote_signed_out';
+const LIFF_ID          = import.meta.env.VITE_LIFF_ID as string | undefined;
+const LIFF_ENABLED     = Boolean(LIFF_ID && LIFF_ID !== 'your-liff-id-here');
+const LINE_USER_KEY    = 'tannote_line_user_id';
+const SIGNED_OUT_KEY   = 'tannote_signed_out';
+const LINE_PICTURE_KEY = 'tannote_line_picture_url';
+const LINE_NAME_KEY    = 'tannote_line_display_name';
 
 let initPromise: Promise<void> | null = null;
 
@@ -23,7 +25,9 @@ export function initLiff(): Promise<void> {
         return;
       }
       const profile = await liff.getProfile();
-      if (profile.userId) localStorage.setItem(LINE_USER_KEY, profile.userId);
+      if (profile.userId)    localStorage.setItem(LINE_USER_KEY,    profile.userId);
+      if (profile.pictureUrl) localStorage.setItem(LINE_PICTURE_KEY, profile.pictureUrl);
+      if (profile.displayName) localStorage.setItem(LINE_NAME_KEY,  profile.displayName);
     })
     .catch((err) => {
       console.warn('[LIFF] init failed, using dev fallback:', err);
@@ -78,10 +82,20 @@ export async function loginWithLiff(): Promise<void> {
       return;
     }
     const profile = await liff.getProfile();
-    if (profile.userId) localStorage.setItem(LINE_USER_KEY, profile.userId);
+    if (profile.userId)      localStorage.setItem(LINE_USER_KEY,    profile.userId);
+    if (profile.pictureUrl)  localStorage.setItem(LINE_PICTURE_KEY, profile.pictureUrl);
+    if (profile.displayName) localStorage.setItem(LINE_NAME_KEY,    profile.displayName);
   } catch {
     try { liff.login(); } catch { /* ignore */ }
   }
+}
+
+export function getLiffPictureUrl(): string | null {
+  return localStorage.getItem(LINE_PICTURE_KEY);
+}
+
+export function getLiffDisplayName(): string | null {
+  return localStorage.getItem(LINE_NAME_KEY);
 }
 
 export { LIFF_ENABLED };
