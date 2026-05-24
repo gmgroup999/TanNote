@@ -1,6 +1,6 @@
 import { PLAN_INFO, PLAN_LIMITS, EARLY_BIRD_TOTAL, EARLY_BIRD_TAKEN, type Plan } from '../config/plans';
 
-const PLANS: Plan[] = ['free', 'starter', 'pro', 'extra'];
+const PLANS: Plan[] = ['free', 'starter', 'pro'];
 const EARLY_BIRD_LEFT = EARLY_BIRD_TOTAL - EARLY_BIRD_TAKEN;
 const EARLY_BIRD_ACTIVE = EARLY_BIRD_LEFT > 0;
 
