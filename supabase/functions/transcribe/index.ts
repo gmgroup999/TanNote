@@ -283,9 +283,9 @@ ${autoClause}
     const keyPoints     = (result.key_points    as string[]) ?? [];
     const actionItems   = (result.action_items  as Record<string, string>[]) ?? [];
     const tags          = (result.tags          as string[]) ?? [];
-    const sentiment     = (result.sentiment     as string)  ?? "neutral";
-    const language      = (result.language      as string)  ?? "th";
-    const rawStructured = result.structured_tags as Record<string, string[]> | undefined;
+    const sentiment        = (result.sentiment     as string)  ?? "neutral";
+    const detectedLanguage = (result.language      as string)  ?? language; // prefer AI-detected lang
+    const rawStructured    = result.structured_tags as Record<string, string[]> | undefined;
 
     // ── 9. Save text to Supabase notes (เก็บแค่ text — ไม่เก็บเสียง) ────────
     await supabase.from("notes").update({
@@ -293,7 +293,7 @@ ${autoClause}
       detected_type: detectedType,
       transcript,
       summary: { overview: summary, points: keyPoints, actions: actionItems, tags, sentiment },
-      language,
+      language: detectedLanguage,
       status: "done",
     }).eq("id", noteId);
 
