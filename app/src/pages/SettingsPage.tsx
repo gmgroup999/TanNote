@@ -23,6 +23,8 @@ import {
   getReminderSettings, saveReminderSettings, type ReminderSettings,
   fetchUsage, saveCloudBackupEnabled, type UsageSummary,
 } from '../lib/api';
+import { signOut } from '../lib/auth';
+import { setLineUserId } from '../lib/liff';
 import UsageIndicator from '../components/UsageIndicator';
 
 const TYPE_CONFIG = [
@@ -41,12 +43,20 @@ const DEFAULT: ReminderSettings = {
 };
 
 export default function SettingsPage({ onOpenPricing }: { onOpenPricing: () => void }) {
-  const [settings, setSettings]       = useState<ReminderSettings>(DEFAULT);
-  const [loading, setLoading]         = useState(true);
-  const [saving, setSaving]           = useState(false);
-  const [saved, setSaved]             = useState(false);
-  const [usage, setUsage]             = useState<UsageSummary | null>(null);
-  const [cloudBackup, setCloudBackup] = useState(false);
+  const [settings, setSettings]           = useState<ReminderSettings>(DEFAULT);
+  const [loading, setLoading]             = useState(true);
+  const [saving, setSaving]               = useState(false);
+  const [saved, setSaved]                 = useState(false);
+  const [usage, setUsage]                 = useState<UsageSummary | null>(null);
+  const [cloudBackup, setCloudBackup]     = useState(false);
+  const [signingOut, setSigningOut]       = useState(false);
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    await signOut();
+    setLineUserId('');
+    window.location.reload();
+  }
   useEffect(() => {
     Promise.all([
       getReminderSettings(),
@@ -183,6 +193,16 @@ export default function SettingsPage({ onOpenPricing }: { onOpenPricing: () => v
         >
           {saving ? 'กำลังบันทึก...' : saved ? '✓ บันทึกแล้ว' : 'บันทึกการตั้งค่า'}
         </button>
+
+        {/* Sign out */}
+        <button
+          onClick={handleSignOut}
+          disabled={signingOut}
+          className="w-full py-3.5 rounded-2xl text-sm font-semibold border border-gray-200 dark:border-[#444448] text-gray-500 dark:text-gray-400 hover:border-red-300 hover:text-red-500 dark:hover:border-red-800 dark:hover:text-red-400 disabled:opacity-50 transition-colors"
+        >
+          {signingOut ? 'กำลังออก...' : 'ออกจากระบบ'}
+        </button>
+
       </main>
     </div>
   );
