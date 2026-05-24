@@ -6,6 +6,17 @@ import {
   type RecordingTypeKey,
 } from '../config/recordingTypes';
 import { transcribeAudio } from '../lib/api';
+import { getPlanCache } from '../lib/planCache';
+import { PLAN_LIMITS, type Plan } from '../config/plans';
+
+const LANGUAGE_LABELS: Record<string, string> = {
+  th:   '🇹🇭 ไทย',
+  en:   '🇬🇧 English',
+  zh:   '🇨🇳 中文',
+  ja:   '🇯🇵 日本語',
+  ko:   '🇰🇷 한국어',
+  auto: '🌐 ตรวจจับอัตโนมัติ',
+};
 
 type RecordingState = 'idle' | 'recording' | 'saving';
 type AiStep = 'uploading' | 'processing' | 'done' | 'error';
@@ -25,9 +36,114 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function TypeSelector({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: RecordingTypeKey;
+  onChange: (key: RecordingTypeKey) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [hoveredKey, setHoveredKey] = useState<RecordingTypeKey | null>(null);
+  const [tooltipTop, setTooltipTop] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onOutside(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setHoveredKey(null);
+      }
+    }
+    document.addEventListener('mousedown', onOutside);
+    return () => document.removeEventListener('mousedown', onOutside);
+  }, [open]);
+
+  function handleItemHover(key: RecordingTypeKey, index: number) {
+    setHoveredKey(key);
+    const item = itemRefs.current[index];
+    const root = rootRef.current;
+    if (item && root) {
+      const itemRect = item.getBoundingClientRect();
+      const rootRect = root.getBoundingClientRect();
+      setTooltipTop(itemRect.top - rootRect.top);
+    }
+  }
+
+  const hovered = hoveredKey ? RECORDING_TYPES[hoveredKey] : null;
+
+  return (
+    <div ref={rootRef} className="relative w-full">
+      {/* Trigger */}
+      <button
+        type="button"
+        onClick={() => { if (!disabled) setOpen((o) => !o); }}
+        disabled={disabled}
+        className="w-full flex items-center justify-between rounded-xl border border-gray-200 dark:border-[#444448] bg-white dark:bg-[#252527] px-4 py-3 text-base text-gray-900 dark:text-gray-100 shadow-sm hover:border-gray-300 dark:hover:border-[#555558] focus:outline-none focus:ring-2 focus:ring-[#E24B4A]/20 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
+      >
+        <span>{RECORDING_TYPES[value].label}</span>
+        <span className="text-gray-400">{open ? '▴' : '▾'}</span>
+      </button>
+
+      {/* Dropdown list */}
+      {open && (
+        <div className="absolute top-full left-0 right-0 z-40 mt-1 rounded-xl border border-gray-200 dark:border-[#444448] bg-white dark:bg-[#252527] shadow-lg overflow-hidden">
+          {RECORDING_TYPE_ORDER.map((key, index) => (
+            <div
+              key={key}
+              ref={(el) => { itemRefs.current[index] = el; }}
+              onMouseEnter={() => handleItemHover(key, index)}
+              onMouseLeave={() => setHoveredKey(null)}
+              onClick={() => { onChange(key); setOpen(false); setHoveredKey(null); }}
+              className={`flex items-center px-4 py-3 cursor-pointer text-sm transition-colors border-b border-gray-50 dark:border-[#333336] last:border-0 ${
+                key === value
+                  ? 'bg-[#E24B4A]/5 text-[#E24B4A] font-medium'
+                  : 'text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#333336]'
+              }`}
+            >
+              {RECORDING_TYPES[key].label}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Hover tooltip — positioned right of the root div, aligned to the hovered item */}
+      {open && hovered && hoveredKey && (
+        <div
+          className="absolute left-[calc(100%+8px)] z-50 w-52 rounded-xl bg-white dark:bg-[#252527] border border-gray-200 dark:border-[#444448] shadow-xl p-3 pointer-events-none"
+          style={{ top: tooltipTop }}
+        >
+          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1.5">
+            {hovered.label}
+          </p>
+          <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed mb-2.5">
+            {hovered.description}
+          </p>
+          <div className="flex items-start gap-1.5 pt-2 border-t border-gray-100 dark:border-[#333336]">
+            <span className="text-[10px] font-semibold text-[#E24B4A] uppercase tracking-wide whitespace-nowrap mt-px">AI เน้น</span>
+            <span className="text-[11px] text-gray-500 dark:text-gray-500 leading-snug">
+              {hovered.summaryFocus}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function RecordPage() {
   const [recordingType, setRecordingType] = useState<RecordingTypeKey>('auto');
+  const [language, setLanguage] = useState('th');
   const [state, setState] = useState<RecordingState>('idle');
+
+  const plan = getPlanCache() as Plan;
+  const planLimits = PLAN_LIMITS[plan] ?? PLAN_LIMITS.free;
+  const supportedLangs = planLimits.languages;
+  const multiLangEnabled = supportedLangs.length > 1;
   const [elapsed, setElapsed] = useState(0);
   const [savedCount, setSavedCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -180,6 +296,7 @@ export default function RecordPage() {
         id: lastSavedId,
         blob: lastBlobRef.current,
         recordingType,
+        language,
         durationSeconds: 0,
         createdAt: new Date(),
       };
@@ -211,7 +328,7 @@ export default function RecordPage() {
   return (
     <div className="min-h-svh flex flex-col items-center bg-[#FAFAF7] dark:bg-[#18181A]">
       {/* Header */}
-      <header className="w-full max-w-md px-5 pt-10 pb-4">
+      <header className="w-full max-w-md lg:max-w-xl px-5 pt-10 pb-4">
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 tracking-tight">
           ทันโน้ต
         </h1>
@@ -221,36 +338,50 @@ export default function RecordPage() {
       </header>
 
       {/* Main card */}
-      <main className="w-full max-w-md px-5 flex flex-col items-center gap-8 mt-4">
+      <main className="w-full max-w-md lg:max-w-xl px-5 flex flex-col items-center gap-8 mt-4">
         {/* Recording type selector */}
         <div className="w-full">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
             ประเภทการบันทึก
           </label>
-          <div className="relative">
-            <select
-              value={recordingType}
-              onChange={(e) => setRecordingType(e.target.value as RecordingTypeKey)}
-              disabled={isRecording || isSaving}
-              className="w-full appearance-none rounded-xl border border-gray-200 dark:border-[#444448] bg-white dark:bg-[#252527] px-4 py-3 pr-10 text-base text-gray-900 dark:text-gray-100 shadow-sm focus:border-[#E24B4A] focus:outline-none focus:ring-2 focus:ring-[#E24B4A]/20 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {RECORDING_TYPE_ORDER.map((key) => (
-                <option key={key} value={key}>
-                  {RECORDING_TYPES[key].label}
-                </option>
-              ))}
-            </select>
-            {/* Chevron */}
-            <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400">
-              ▾
-            </span>
-          </div>
+          <TypeSelector
+            value={recordingType}
+            onChange={setRecordingType}
+            disabled={isRecording || isSaving}
+          />
           {recordingType === 'auto' && (
             <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-600">
               AI จะวิเคราะห์เนื้อหาและเลือกประเภทให้อัตโนมัติ
             </p>
           )}
         </div>
+
+        {/* Language selector — Starter+ only */}
+        {multiLangEnabled ? (
+          <div className="w-full">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              ภาษาที่พูด
+            </label>
+            <div className="relative">
+              <select
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+                disabled={isRecording || isSaving}
+                className="w-full appearance-none rounded-xl border border-gray-200 dark:border-[#444448] bg-white dark:bg-[#252527] px-4 py-3 pr-10 text-base text-gray-900 dark:text-gray-100 shadow-sm focus:border-[#E24B4A] focus:outline-none focus:ring-2 focus:ring-[#E24B4A]/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {supportedLangs.map((lang) => (
+                  <option key={lang} value={lang}>{LANGUAGE_LABELS[lang] ?? lang}</option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400">▾</span>
+            </div>
+          </div>
+        ) : (
+          <div className="w-full flex items-center justify-between rounded-xl border border-gray-100 dark:border-[#333336] bg-gray-50 dark:bg-[#1E1E20] px-4 py-2.5">
+            <span className="text-sm text-gray-500 dark:text-gray-500">ภาษา: 🇹🇭 ไทย</span>
+            <span className="text-[11px] text-gray-400 dark:text-gray-600">Starter+ รองรับหลายภาษา</span>
+          </div>
+        )}
 
         {/* Timer */}
         <div className="flex flex-col items-center gap-2">

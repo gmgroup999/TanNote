@@ -20,7 +20,7 @@
 
 import { GoogleGenAI } from "npm:@google/genai";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { PLAN_LIMITS, currentPeriod, quotaExceededResponse } from "../_shared/plans.ts";
+import { PLAN_LIMITS, SUPPORTED_LANGUAGES, currentPeriod, quotaExceededResponse } from "../_shared/plans.ts";
 
 // ─── Env ─────────────────────────────────────────────────────────────────────
 const GEMINI_API_KEY  = Deno.env.get("GEMINI_API_KEY")!;
@@ -113,6 +113,7 @@ Deno.serve(async (req: Request) => {
     const recType     = (formData.get("recording_type") as string | null) ?? "auto";
     const durationSec = Number(formData.get("duration_seconds") ?? 0);
     const localId     = (formData.get("local_audio_id") as string | null) ?? "";
+    const language    = (formData.get("language") as string | null) ?? "th";
     const lineUserId  = req.headers.get("x-line-user-id") ?? "anonymous";
 
     if (!audioFile || audioFile.size === 0) {
@@ -147,7 +148,18 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // ── 2c. Check language support ───────────────────────────────────────────
+    const allowedLangs = SUPPORTED_LANGUAGES[userPlan] ?? SUPPORTED_LANGUAGES.free;
+    if (language !== "th" && !allowedLangs.includes(language) && !allowedLangs.includes("auto")) {
+      return quotaExceededResponse(userPlan, `ภาษา "${language}"`, 0, 1);
+    }
+
     // ── 3. Create note (status = processing) ────────────────────────────────
+    const retentionDays = PLAN_LIMITS[userPlan]?.text_retention_days ?? PLAN_LIMITS.free.text_retention_days;
+    const expiresAt = retentionDays !== null
+      ? new Date(Date.now() + retentionDays * 86400_000).toISOString()
+      : null;
+
     const { data: noteRow, error: noteErr } = await supabase
       .from("notes")
       .insert({
@@ -157,6 +169,7 @@ Deno.serve(async (req: Request) => {
         duration_seconds: durationSec,
         local_audio_id:   localId,
         status:           "processing",
+        expires_at:       expiresAt,
       })
       .select("id")
       .single();
@@ -196,9 +209,18 @@ Deno.serve(async (req: Request) => {
     const currentISOBKK = nowBKK.toLocaleString("sv-SE", { timeZone: "Asia/Bangkok" })
       .replace(" ", "T") + "+07:00";
 
+    const langNames: Record<string, string> = {
+      th: "ไทย", en: "English", zh: "Chinese (Simplified)", ja: "Japanese",
+      ko: "Korean", auto: "auto-detect",
+    };
+    const langInstruction = language === "th" || language === "auto"
+      ? "ถอดเสียงตามภาษาที่พูดจริง"
+      : `Transcribe in ${langNames[language] ?? language}. Summary/analysis in Thai.`;
+
     const prompt = `${GUARDRAILS}
 
 ถอดเสียงและวิเคราะห์เนื้อหาต่อไปนี้ ตอบเป็น JSON เท่านั้น ไม่มีข้อความอื่น:
+${langInstruction}
 
 ${autoClause}
 

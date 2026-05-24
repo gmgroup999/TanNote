@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { fetchUsage, type UsageSummary } from '../lib/api';
 import { PLAN_LIMITS, PLAN_INFO, usageColor, usageRecommendation, type Plan } from '../config/plans';
+import { setPlanCache } from '../lib/planCache';
 
 function Bar({ label, used, limit, unit }: {
   label: string; used: number; limit: number | null; unit: string;
@@ -39,7 +40,10 @@ export default function UsageIndicator({ onOpenPricing }: { onOpenPricing?: () =
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchUsage().then(setUsage).finally(() => setLoading(false));
+    fetchUsage().then((u) => {
+      setUsage(u);
+      if (u?.plan) setPlanCache(u.plan);
+    }).finally(() => setLoading(false));
   }, []);
 
   if (loading) {

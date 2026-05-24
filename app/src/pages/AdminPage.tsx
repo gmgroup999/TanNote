@@ -18,12 +18,37 @@ interface AdminUser {
   nickname:          string | null;
   display_name:      string | null;
   plan:              string;
+  plan_expires_at:   string | null;
   is_suspended:      boolean;
   suspended_at:      string | null;
   created_at:        string;
   recording_minutes: number;
   ask_notes_count:   number;
+  ai_suggest_count:  number;
   note_count:        number;
+}
+
+/** Compute plan_expires_at when admin changes plan */
+function computePlanExpiry(plan: string): string | null {
+  if (plan === 'starter') {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() + 1);
+    return d.toISOString();
+  }
+  return null;
+}
+
+/** Format expiry for display */
+function formatExpiry(expiresAt: string | null): { text: string; color: string } | null {
+  if (!expiresAt) return null;
+  const d = new Date(expiresAt);
+  const daysLeft = Math.ceil((d.getTime() - Date.now()) / 86_400_000);
+  if (daysLeft < 0)  return { text: 'หมดอายุแล้ว', color: 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400' };
+  if (daysLeft <= 30) return { text: `เหลือ ${daysLeft} วัน`, color: 'bg-amber-50 dark:bg-[#2A2A1A] text-amber-600 dark:text-amber-400' };
+  return {
+    text: new Intl.DateTimeFormat('th-TH', { dateStyle: 'short', timeZone: 'Asia/Bangkok' }).format(d),
+    color: 'bg-gray-100 dark:bg-[#333336] text-gray-500 dark:text-gray-400',
+  };
 }
 
 interface Stats {
@@ -81,9 +106,25 @@ export default function AdminPage({ session }: { session: Session }) {
 
   async function updatePlan(userId: string, plan: string) {
     setActionLoading(userId + '_plan');
+    const expiresAt = computePlanExpiry(plan);
     try {
-      await callAdmin(session, { action: 'update_plan', userId, plan });
-      setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, plan } : u));
+      await callAdmin(session, { action: 'update_plan', userId, plan, expiresAt });
+      setUsers((prev) => prev.map((u) =>
+        u.id === userId ? { ...u, plan, plan_expires_at: expiresAt } : u
+      ));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด');
+    } finally { setActionLoading(null); }
+  }
+
+  async function resetUsage(userId: string) {
+    if (!confirm('Reset usage เดือนนี้ของ user นี้?')) return;
+    setActionLoading(userId + '_reset');
+    try {
+      await callAdmin(session, { action: 'reset_usage', userId });
+      setUsers((prev) => prev.map((u) =>
+        u.id === userId ? { ...u, recording_minutes: 0, ask_notes_count: 0, ai_suggest_count: 0 } : u
+      ));
     } catch (err) {
       alert(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด');
     } finally { setActionLoading(null); }
@@ -234,13 +275,21 @@ export default function AdminPage({ session }: { session: Session }) {
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
                       {u.nickname ?? u.display_name ?? '—'}
                     </p>
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${PLAN_COLOR[u.plan] ?? PLAN_COLOR.free}`}>
                       {u.plan.toUpperCase()}
                     </span>
+                    {(() => {
+                      const exp = formatExpiry(u.plan_expires_at);
+                      return exp ? (
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${exp.color}`}>
+                          {exp.text}
+                        </span>
+                      ) : null;
+                    })()}
                     {u.is_suspended && (
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400">
                         SUSPENDED
@@ -254,6 +303,7 @@ export default function AdminPage({ session }: { session: Session }) {
                     <span>📝 {u.note_count} notes</span>
                     <span>🎙 {u.recording_minutes}น.</span>
                     <span>💬 {u.ask_notes_count} asks</span>
+                    {u.ai_suggest_count > 0 && <span>✨ {u.ai_suggest_count} suggest</span>}
                   </div>
                 </div>
 
@@ -267,10 +317,22 @@ export default function AdminPage({ session }: { session: Session }) {
                     className="text-xs rounded-lg border border-gray-200 dark:border-[#444448] bg-white dark:bg-[#1E1E20] text-gray-700 dark:text-gray-300 px-2 py-1 focus:outline-none disabled:opacity-50"
                   >
                     <option value="free">Free</option>
-                    <option value="starter">Starter</option>
-                    <option value="pro">Pro</option>
-                    <option value="extra">Extra</option>
+                    <option value="starter">Starter +1ปี</option>
+                    <option value="pro">Pro ∞</option>
+                    <option value="extra">Extra ∞</option>
                   </select>
+
+                  {/* Reset usage */}
+                  <button
+                    onClick={() => resetUsage(u.id)}
+                    disabled={!!actionLoading}
+                    title="Reset usage เดือนนี้"
+                    className="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-50 dark:bg-[#1A2A3A] text-blue-500 hover:bg-blue-100 dark:hover:bg-[#1A2A4A] transition-colors disabled:opacity-40"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </button>
 
                   {/* Suspend toggle */}
                   <button

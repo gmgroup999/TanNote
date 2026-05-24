@@ -6,7 +6,7 @@
  * AND the user's email must be in the ADMIN_EMAILS secret (comma-separated).
  *
  * Body: { action, ...params }
- * Actions: list_users | update_plan | suspend_user | delete_user | get_stats
+ * Actions: list_users | update_plan | suspend_user | delete_user | get_stats | reset_usage
  */
 
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -31,6 +31,16 @@ function respond(data: unknown, status = 200) {
 
 const VALID_PLANS = ["free", "starter", "pro", "extra"];
 
+/** Auto-calculate plan_expires_at based on plan type */
+function autoPlanExpiry(plan: string): string | null {
+  if (plan === "starter") {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() + 1);
+    return d.toISOString();
+  }
+  return null; // free, pro, extra = no expiry
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return respond({ error: "Method not allowed" }, 405);
@@ -40,7 +50,6 @@ Deno.serve(async (req: Request) => {
   const jwt = authHeader.replace(/^Bearer\s+/i, "");
   if (!jwt) return respond({ error: "Unauthorized" }, 401);
 
-  // Use the JWT to get the calling user
   const callerClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
     global: { headers: { Authorization: `Bearer ${jwt}` } },
   });
@@ -58,7 +67,7 @@ Deno.serve(async (req: Request) => {
 
     // ── list_users ────────────────────────────────────────────────────────────
     if (body.action === "list_users") {
-      const period = new Date().toISOString().slice(0, 7); // YYYY-MM
+      const period = new Date().toISOString().slice(0, 7);
       const { data, error } = await svc.rpc("admin_list_users", { p_period: period });
       if (error) throw new Error(error.message);
       return respond({ users: data ?? [] });
@@ -74,14 +83,14 @@ Deno.serve(async (req: Request) => {
         svc.from("usage_tracking").select("recording_minutes, ask_notes_count").eq("period", period),
       ]);
 
-      const totalUsers    = usersRes.data?.length ?? 0;
-      const activeUsers   = usersRes.data?.filter((u: { is_suspended: boolean }) => !u.is_suspended).length ?? 0;
-      const planCounts    = (usersRes.data ?? []).reduce((acc: Record<string, number>, u: { plan: string }) => {
+      const totalUsers  = usersRes.data?.length ?? 0;
+      const activeUsers = usersRes.data?.filter((u: { is_suspended: boolean }) => !u.is_suspended).length ?? 0;
+      const planCounts  = (usersRes.data ?? []).reduce((acc: Record<string, number>, u: { plan: string }) => {
         acc[u.plan] = (acc[u.plan] ?? 0) + 1; return acc;
       }, {});
-      const totalNotes    = notesRes.count ?? 0;
-      const monthMins     = (usageRes.data ?? []).reduce((s: number, r: { recording_minutes: number }) => s + (r.recording_minutes ?? 0), 0);
-      const monthAsks     = (usageRes.data ?? []).reduce((s: number, r: { ask_notes_count: number }) => s + (r.ask_notes_count ?? 0), 0);
+      const totalNotes  = notesRes.count ?? 0;
+      const monthMins   = (usageRes.data ?? []).reduce((s: number, r: { recording_minutes: number }) => s + (r.recording_minutes ?? 0), 0);
+      const monthAsks   = (usageRes.data ?? []).reduce((s: number, r: { ask_notes_count: number }) => s + (r.ask_notes_count ?? 0), 0);
 
       return respond({ totalUsers, activeUsers, planCounts, totalNotes, monthMins, monthAsks, period });
     }
@@ -92,12 +101,17 @@ Deno.serve(async (req: Request) => {
       if (!userId || !plan || !VALID_PLANS.includes(plan))
         return respond({ error: "userId และ plan ต้องระบุ (free/starter/pro/extra)" }, 400);
 
+      // Use provided expiresAt if explicitly passed, otherwise auto-calculate
+      const plan_expires_at = "expiresAt" in body
+        ? (body.expiresAt as string | null)
+        : autoPlanExpiry(plan);
+
       const { error } = await svc
         .from("users_profile")
-        .update({ plan })
+        .update({ plan, plan_expires_at })
         .eq("id", userId);
       if (error) throw new Error(error.message);
-      return respond({ ok: true });
+      return respond({ ok: true, plan_expires_at });
     }
 
     // ── suspend_user ──────────────────────────────────────────────────────────
@@ -114,12 +128,26 @@ Deno.serve(async (req: Request) => {
       return respond({ ok: true });
     }
 
+    // ── reset_usage ───────────────────────────────────────────────────────────
+    if (body.action === "reset_usage") {
+      const { userId } = body as { userId?: string };
+      if (!userId) return respond({ error: "userId ต้องระบุ" }, 400);
+
+      const period = new Date().toISOString().slice(0, 7);
+      const { error } = await svc
+        .from("usage_tracking")
+        .update({ recording_minutes: 0, ask_notes_count: 0, ai_suggest_count: 0 })
+        .eq("user_id", userId)
+        .eq("period", period);
+      if (error) throw new Error(error.message);
+      return respond({ ok: true });
+    }
+
     // ── delete_user ───────────────────────────────────────────────────────────
     if (body.action === "delete_user") {
       const { userId } = body as { userId?: string };
       if (!userId) return respond({ error: "userId ต้องระบุ" }, 400);
 
-      // Delete notes + user_memory first, then profile
       await svc.from("notes").delete().eq("user_id", userId);
       await svc.from("user_memory").delete().eq("user_id", userId);
       await svc.from("usage_tracking").delete().eq("user_id", userId);

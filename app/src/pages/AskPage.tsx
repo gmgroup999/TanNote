@@ -106,7 +106,7 @@ function OnboardingView({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="min-h-svh flex flex-col bg-[#FAFAF7] dark:bg-[#18181A]">
-      <div className="w-full max-w-md mx-auto px-5 pt-14 pb-6 flex-1 flex flex-col">
+      <div className="w-full max-w-md lg:max-w-2xl mx-auto px-5 pt-14 pb-6 flex-1 flex flex-col">
         {/* Progress dots */}
         <div className="flex gap-1.5 mb-8">
           {[0, 1, 2].map((i) => (
@@ -225,7 +225,7 @@ function MemoryView({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="min-h-svh flex flex-col bg-[#FAFAF7] dark:bg-[#18181A]">
-      <header className="w-full max-w-md mx-auto px-5 pt-10 pb-4 flex items-center gap-3">
+      <header className="w-full max-w-md lg:max-w-2xl mx-auto px-5 pt-10 pb-4 flex items-center gap-3">
         <button onClick={onBack} className="w-8 h-8 rounded-full bg-gray-100 dark:bg-[#333336] flex items-center justify-center text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-[#444448] transition-colors">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -237,7 +237,7 @@ function MemoryView({ onBack }: { onBack: () => void }) {
         </div>
       </header>
 
-      <main className="w-full max-w-md mx-auto px-5 flex-1 pb-6">
+      <main className="w-full max-w-md lg:max-w-2xl mx-auto px-5 flex-1 pb-6">
         {loading ? (
           <p className="text-center text-gray-400 dark:text-gray-600 text-sm py-10">กำลังโหลด...</p>
         ) : memories.length === 0 ? (
@@ -348,7 +348,7 @@ function ChatView({ onOpenMemory, onOpenNote, messages, setMessages }: {
   return (
     <div className="min-h-svh flex flex-col bg-[#FAFAF7] dark:bg-[#18181A]">
       {/* Header */}
-      <header className="w-full max-w-md mx-auto px-5 pt-10 pb-3 flex items-center justify-between">
+      <header className="w-full max-w-md lg:max-w-2xl mx-auto px-5 pt-10 pb-3 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 tracking-tight">ถามบันทึก</h1>
           <p className="text-sm text-gray-500 dark:text-gray-500 mt-0.5">ถามอะไรก็ได้จากบันทึกของคุณ</p>
@@ -376,7 +376,7 @@ function ChatView({ onOpenMemory, onOpenNote, messages, setMessages }: {
       </header>
 
       {/* Messages */}
-      <div className="w-full max-w-md mx-auto px-5 flex-1 flex flex-col gap-4 pb-4 overflow-y-auto">
+      <div className="w-full max-w-md lg:max-w-2xl mx-auto px-5 flex-1 flex flex-col gap-4 pb-4 overflow-y-auto">
         {messages.length === 0 && (
           <div className="flex flex-col items-center py-12 gap-4 text-center">
             <div className="w-16 h-16 rounded-2xl bg-[#E24B4A]/10 flex items-center justify-center text-3xl">💬</div>

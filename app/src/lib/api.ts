@@ -73,6 +73,7 @@ export async function transcribeAudio(
   form.append("recording_type",   record.recordingType);
   form.append("duration_seconds", String(record.durationSeconds));
   form.append("local_audio_id",   record.id);
+  if ((record as any).language) form.append("language", (record as any).language);
 
   onProgress?.("processing");
 
@@ -109,6 +110,48 @@ export async function deleteNote(noteId: string): Promise<void> {
       headers: { apikey: SUPABASE_ANON, "Content-Type": "application/json" },
     });
   } catch { /* non-critical */ }
+}
+
+// ─── uploadR2Backup ───────────────────────────────────────────────────────────
+export async function uploadR2Backup(blob: Blob, noteId: string): Promise<string | null> {
+  if (!isSupabaseReady()) return null;
+  try {
+    const form = new FormData();
+    form.append("audio", blob, `${noteId}.webm`);
+    form.append("note_id", noteId);
+    const res = await fetch(getEdgeFunctionUrl("r2-backup"), {
+      method:  "POST",
+      headers: {
+        ...(SUPABASE_ANON ? { apikey: SUPABASE_ANON } : {}),
+        "x-line-user-id": getLiffUserId(),
+      },
+      body: form,
+    });
+    const json = await res.json() as { ok?: boolean; url?: string; error?: string };
+    return json.url ?? null;
+  } catch { return null; }
+}
+
+// ─── patchNote ────────────────────────────────────────────────────────────────
+export async function patchNote(
+  noteId: string,
+  patch: { title?: string; recording_type?: string; remove_tags?: string[] },
+): Promise<void> {
+  if (!isSupabaseReady()) return;
+  await fetch(getEdgeFunctionUrl("patch-note"), {
+    method:  "PATCH",
+    headers: {
+      ...(SUPABASE_ANON ? { apikey: SUPABASE_ANON } : {}),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ note_id: noteId, ...patch }),
+  }).catch(() => {});
+}
+
+// ─── reprocessNote ────────────────────────────────────────────────────────────
+/** ลบ note เก่าออกจาก Supabase ก่อนที่จะสร้างใหม่ (re-process with new type) */
+export async function reprocessNote(noteId: string): Promise<void> {
+  await deleteNote(noteId);
 }
 
 // ─── confirmNoteLink ──────────────────────────────────────────────────────────

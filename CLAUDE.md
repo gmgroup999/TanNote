@@ -90,6 +90,17 @@ extra(599): ∞ + cloud backup
 - Auth identity: LIFF user = `U<32>` in localStorage; email user = `sa_<supabase_uuid>`
 - Security: client-side `VITE_ADMIN_EMAILS` controls UI visibility only; server always re-verifies via `ADMIN_EMAILS` secret
 
+### UI/UX + Admin improvements — เสร็จแล้ว (2026-05-24)
+- **Responsive desktop layout**: RecordingsPage master-detail (lg+), RecordPage/SettingsPage max-w-xl, AskPage max-w-2xl
+- **RecordingsPage**: เพิ่ม `CompactListItem` + selected state; hashtag cloud ย้ายไปล่างรายการ; Note Graph เป็น default
+- **TypeSelector**: แทนที่ native `<select>` ใน RecordPage ด้วย custom dropdown + hover tooltip แสดง description + summaryFocus
+- **GraphViewPage rewrite**: drag nodes, degree-based size, confirm/reject links, navigate-to-note, Tag Graph + Note Graph (zoom/pan/filter), Note Graph default + แสดงก่อน
+- **Export fix**: free plan `can_export: true`; `downloadBlob` append to DOM ก่อน click + setTimeout revoke
+- **Admin panel**: แสดง `plan_expires_at` badge (สีตามวันที่เหลือ), `ai_suggest_count`, ปุ่ม Reset Usage, plan dropdown labels ชัดขึ้น (Starter +1ปี, Pro ∞)
+- **admin-api**: `update_plan` auto-compute `plan_expires_at` (Starter=+1ปี, Pro/Extra/Free=null); เพิ่ม `reset_usage` action
+- **Settings**: ลบ LINE User ID section ออก (ตั้งอัตโนมัติจาก LIFF/Auth แล้ว)
+- **Deploy ✅**: admin-api deployed, migration 20260524000002 applied, `ADMIN_EMAILS` + `NODE_ID` secrets set, functions redeployed ทั้งหมด
+
 ### Bug fixes อื่น ๆ (2026-05-21)
 - Memory dedup: migration `20260521000004_memory_dedup.sql` + unique constraint `(user_id, key)` + `save-memory` เปลี่ยน insert → upsert
 - React Error Boundary: `AppErrorBoundary` class component ใน `App.tsx` ครอบ page content ทั้งหมด
@@ -106,7 +117,7 @@ extra(599): ∞ + cloud backup
 | `app/src/pages/RecordPage.tsx` | หน้าบันทึกเสียง + AI trigger หลังบันทึก |
 | `app/src/pages/RecordingsPage.tsx` | รายการ + AI panel + batch + Knowledge Graph cloud |
 | `app/src/pages/AskPage.tsx` | RAG chat + onboarding + memory view + sender name labels |
-| `app/src/pages/SettingsPage.tsx` | การแจ้งเตือน + quiet hours + LINE User ID |
+| `app/src/pages/SettingsPage.tsx` | การแจ้งเตือน + quiet hours (LINE User ID ถูกซ่อนแล้ว) |
 | `app/src/pages/GraphViewPage.tsx` | Force-layout knowledge graph + `useDark` MutationObserver hook |
 | `app/src/pages/PricingPage.tsx` | แสดงแผนราคา + upgrade CTA |
 | `app/src/pages/LoginPage.tsx` | Magic link login form |
@@ -134,14 +145,92 @@ extra(599): ∞ + cloud backup
 ## Supabase Project
 - **Project ref**: `czczwtjgmjnboeeibxcd`
 - **URL**: `https://czczwtjgmjnboeeibxcd.supabase.co`
-- **Secrets set**: `GEMINI_API_KEY`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET`
-- **Secrets pending**: `ADMIN_EMAILS=zuraponx999@gmail.com`, `NODE_ID=fa9724d8-6c55-428d-ba33-8a2da6db0e71`
-- **Functions deployed**: `transcribe`, `ask`, `send-reminders`, `line-webhook`, `save-memory`
-- **Functions pending deploy**: `admin-api`
+- **Secrets set**: `GEMINI_API_KEY`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET`, `ADMIN_EMAILS`, `NODE_ID` ✅
+- **Functions deployed**: `transcribe`, `ask`, `send-reminders`, `line-webhook`, `save-memory`, `admin-api`, `patch-note`, `r2-backup` ✅ (redeployed 2026-05-24)
 - **Extensions enabled**: `pg_cron`, `pg_net`, `pgvector`
 - **pg_cron job**: schedule id 1 — ทุก 1 นาที → `send-reminders`
-- **Migrations applied**: `20260520000000_init.sql`
-- **Migrations pending**: `20260521000006_auth_admin.sql`
+- **Migrations applied**: ทั้งหมดถึง `20260524000002_admin_list_users_v2.sql` ✅
+
+---
+
+## สิ่งที่ทำวันนี้ (2026-05-24)
+
+### UI/UX + Desktop Responsive
+| งาน | ผล |
+|---|---|
+| RecordingsPage master-detail (lg+) | left panel `w-80` scrollable list + right panel full detail; `CompactListItem` component; auto-select first record |
+| RecordPage wider | `max-w-md lg:max-w-xl` |
+| AskPage wider | `max-w-md lg:max-w-2xl` |
+| SettingsPage wider | `max-w-md lg:max-w-xl` |
+| Hashtag cloud ย้ายไปล่าง | สลับลำดับให้รายการอยู่บน หัวข้อทั้งหมดอยู่ล่าง (ทั้ง mobile + desktop) |
+
+### Knowledge Graph
+| งาน | ผล |
+|---|---|
+| Tag Graph + Note Graph (dual mode) | Tag Graph = tags เป็น node, co-occurrence edges; Note Graph = notes เป็น node, zoom/pan/filter |
+| Note Graph เป็น default + แสดงก่อน | สลับลำดับ tab และเปลี่ยน `useState('note')` |
+| Drag nodes | `onPointerDown/Move/Up` + `didDragRef` disambiguate drag vs click |
+| Node size by degree | `nodeRadius()` = 14 + edges.length × 4, max 30 |
+| Confirm/reject links | ปุ่ม ✓/✗ ใน selected node panel; เรียก `confirmNoteLink()` |
+| Navigate-to-note | ปุ่ม →บันทึก ใน selected node panel; เรียก `onNavigateToNote` prop |
+| Bug fix: null.tx during zoom | แก้ `svgPoint()` + capture `panRef.current` ก่อน setState callback |
+
+### TypeSelector + Hover Tooltip
+| งาน | ผล |
+|---|---|
+| `recordingTypes.ts` เพิ่ม `description` field | 8 ประเภท มี description ภาษาไทย + summaryFocus |
+| Custom `TypeSelector` component | แทน native `<select>` — open state, hovered item, close on outside click |
+| Tooltip floating ขวา | `left-[calc(100%+8px)]` relative to root div (ไม่ใช่ overflow-hidden dropdown); `top` คำนวณจาก `getBoundingClientRect` |
+
+### Export + Plan
+| งาน | ผล |
+|---|---|
+| Export ใช้ได้ทุก plan | `plans.ts`: free `can_export: true` |
+| `downloadBlob` bug fix | append `<a>` เข้า DOM ก่อน click; `setTimeout` 1s ก่อน revoke URL |
+
+### Admin + Plan Management
+| งาน | ผล |
+|---|---|
+| `plan_expires_at` badge | แสดงในทุก user card — แดง=หมดแล้ว / เหลือง=≤30วัน / เทา=ปกติ |
+| `ai_suggest_count` ใน stats row | แสดงใน user card stats |
+| Plan dropdown ชัดขึ้น | "Starter +1ปี", "Pro ∞", "Extra ∞" |
+| Auto-expiry เวลาเปลี่ยน plan | `computePlanExpiry()`: Starter=+1ปี, Pro/Extra/Free=null |
+| ปุ่ม Reset Usage | เรียก `reset_usage` action — ล้าง usage_tracking เดือนปัจจุบัน |
+| `admin-api` เพิ่ม `reset_usage` | update recording_minutes/ask_notes_count/ai_suggest_count = 0 |
+| `admin-api` `update_plan` + expiry | update `plan_expires_at` อัตโนมัติพร้อมกับ plan |
+| Migration `20260524000002` | อัปเดต `admin_list_users` RPC ให้ return `plan_expires_at` + `ai_suggest_count` |
+
+### Settings
+| งาน | ผล |
+|---|---|
+| ลบ LINE User ID section | ซ่อนจากผู้ใช้ — ตั้งอัตโนมัติจาก LIFF/Auth ใน App.tsx อยู่แล้ว |
+
+### Deploy ✅
+| งาน | ผล |
+|---|---|
+| `admin-api` deployed | `npx supabase functions deploy admin-api --no-verify-jwt` |
+| Migration `20260524000002` applied | `npx supabase db push` |
+| `ADMIN_EMAILS` secret set | `zuraponx999@gmail.com` |
+| `NODE_ID` secret set | `fa9724d8-6c55-428d-ba33-8a2da6db0e71` |
+| Functions redeployed ทั้งหมด | รับ secrets ใหม่ครบแล้ว |
+
+---
+
+## ไฟล์ที่แก้ไขวันนี้ (2026-05-24)
+
+| ไฟล์ | สิ่งที่เปลี่ยน |
+|---|---|
+| `app/src/pages/RecordPage.tsx` | + `TypeSelector` custom component (hover tooltip), `max-w-xl` desktop |
+| `app/src/pages/RecordingsPage.tsx` | + master-detail layout (lg+), `CompactListItem`, hashtag cloud ย้ายล่าง |
+| `app/src/pages/AskPage.tsx` | `max-w-2xl` desktop |
+| `app/src/pages/SettingsPage.tsx` | `max-w-xl` desktop; ลบ LINE User ID section + state |
+| `app/src/pages/GraphViewPage.tsx` | Tag+Note dual graph, drag, degree size, confirm/reject, navigate, zoom/pan, Note Graph default |
+| `app/src/pages/AdminPage.tsx` | + `plan_expires_at` badge, `ai_suggest_count`, reset_usage button, expiry auto-compute |
+| `app/src/config/recordingTypes.ts` | + `description` field ใน `RecordingType` interface + ทุก 8 ประเภท |
+| `app/src/config/plans.ts` | free plan: `can_export: true` |
+| `app/src/lib/export.ts` | `downloadBlob`: append to DOM + setTimeout revoke |
+| `supabase/functions/admin-api/index.ts` | + `reset_usage` action; `update_plan` sets `plan_expires_at` auto |
+| `supabase/migrations/20260524000002_admin_list_users_v2.sql` | **ไฟล์ใหม่** — updated `admin_list_users` RPC |
 
 ---
 
@@ -250,42 +339,27 @@ extra(599): ∞ + cloud backup
 
 ## TODO ถัดไป
 
-### Deploy admin-api (ทำก่อน)
-```bash
-npx supabase functions deploy admin-api --no-verify-jwt
-```
-แล้วตั้ง Supabase secret:
-```
-ADMIN_EMAILS=zuraponx999@gmail.com
-```
-และ apply migration:
-```bash
-npx supabase db push
-```
-(หรือ paste `20260521000006_auth_admin.sql` ใน Supabase SQL Editor)
-
 ### Deploy ขึ้น Coolify — ขั้นตอน (รอ user action)
 GitHub repo พร้อมแล้วที่: `https://github.com/gmgroup999/TanNote`
 
+> **ก่อน deploy ต้อง git push code ล่าสุดขึ้น GitHub ก่อน**
+> ```bash
+> git add -A && git commit -m "UI improvements + admin panel + plan management"
+> git push origin main
+> ```
+
 1. Coolify → New Resource → Git Repository → เลือก `gmgroup999/TanNote`
 2. Build Pack: **Dockerfile** (Dockerfile อยู่ที่ root ✓)
-3. ตั้ง **Build Arguments** (ไม่ใช่ Env Vars — Vite อ่านตอน build time):
+3. ตั้ง **Build Arguments** (Vite อ่านตอน build time — ใช้ Build Args ไม่ใช่ Env Vars):
    ```
    VITE_SUPABASE_URL=https://czczwtjgmjnboeeibxcd.supabase.co
-   VITE_SUPABASE_ANON_KEY=eyJhbGci...01M
+   VITE_SUPABASE_ANON_KEY=<anon key จาก .env.local>
    VITE_LIFF_ID=2010157477-I2NTp3zI
    VITE_ADMIN_EMAILS=zuraponx999@gmail.com
    ```
 4. ตั้ง domain (เช่น `app.tannote.co`) → Enable HTTPS
 5. กด Deploy
-6. หลัง deploy: ตั้ง LIFF endpoint URL ใน LINE Developer Console = `https://app.tannote.co`
-
-### ตั้ง NODE_ID ใน Supabase (รอ user action)
-```
-Supabase → Settings → Edge Functions → Secrets → Add
-NODE_ID = fa9724d8-6c55-428d-ba33-8a2da6db0e71
-```
-แล้ว redeploy functions ทั้งหมด: `npx supabase functions deploy --no-verify-jwt`
+6. หลัง deploy: ตั้ง LIFF endpoint URL ใน LINE Developer Console = domain จริง
 
 ### ตั้ง LINE Webhook URL (รอ user action)
 ```
@@ -294,21 +368,23 @@ https://czczwtjgmjnboeeibxcd.supabase.co/functions/v1/line-webhook
 ```
 
 ### ทดสอบ LINE Push end-to-end (หลัง deploy แล้ว)
-1. Settings → กรอก LINE User ID จริง (`U` + 32 ตัว)
-2. บันทึกโน้ตใหม่ที่มี action item
-3. รอ pg_cron 1 นาที → ดู LINE message
-4. กดปุ่ม postback → verify ใน Supabase DB
+1. บันทึกโน้ตใหม่ที่มี action item → AI ถอดเสียง
+2. รอ pg_cron 1 นาที → ดู LINE message
+3. กดปุ่ม postback "เสร็จแล้ว" → verify ใน Supabase DB
+
+### ระบบชำระเงิน (ยังไม่มี)
+- ปัจจุบัน: admin เปลี่ยน plan ให้ user ด้วยมือผ่าน Admin Panel
+- อนาคต: integrate payment gateway (PromptPay QR / Stripe) → webhook → `update_plan` API
+- จนกว่าจะมีระบบชำระเงิน: user แจ้งแล้ว admin เปลี่ยนให้ผ่าน Admin Panel
 
 ---
 
 ## ปัญหาที่ยังไม่ได้แก้
 
-| ปัญหา | รายละเอียด | วิธีแก้แนะนำ |
+| ปัญหา | รายละเอียด | วิธีแก้ |
 |---|---|---|
-| Migration `20260521000006` ยังไม่ apply | `is_suspended` column ยังไม่มีใน DB | paste ใน Supabase SQL Editor หรือ `supabase db push` |
-| `admin-api` ยังไม่ได้ deploy | ระบบ admin ยังใช้งานไม่ได้ | `npx supabase functions deploy admin-api --no-verify-jwt` |
-| `ADMIN_EMAILS` secret ยังไม่ได้ตั้ง | admin-api จะ return 403 ทุก request | Supabase Dashboard → Settings → Edge Functions → Secrets |
-| `NODE_ID` เป็น default UUID | Multi-tenant ยังไม่ configure จริง | ตั้ง `NODE_ID=fa9724d8-6c55-428d-ba33-8a2da6db0e71` ใน Supabase secrets |
-| ยังไม่ได้ deploy บน Coolify | app ยังรันบน localhost | ทำตามขั้นตอน Coolify ด้านบน (GitHub repo พร้อมแล้ว) |
-| LINE webhook ยังไม่ได้ configure | postback "เสร็จ/เลื่อน" ยังไม่ทำงาน | LINE Developer Console → Webhook URL: `...supabase.co/functions/v1/line-webhook` |
-| LIFF endpoint URL ยังไม่ได้ตั้ง | LINE auto-login ยังไม่ทำงาน | ตั้งหลัง Coolify deploy ได้ domain จริงแล้ว |
+| ยังไม่ได้ deploy บน Coolify | app รันบน localhost เท่านั้น | ทำตามขั้นตอน Coolify ด้านบน (ต้อง git push ก่อน) |
+| LINE webhook ยังไม่ได้ configure | postback "เสร็จ/เลื่อน" ยังไม่ทำงาน | LINE Developer Console → Webhook URL |
+| LIFF endpoint URL ยังไม่ได้ตั้ง | LINE auto-login ยังไม่ทำงาน | ตั้งหลังได้ domain จริงจาก Coolify |
+| ระบบชำระเงินยังไม่มี | plan change ทำได้เฉพาะผ่าน admin มือ | integrate payment webhook ในอนาคต |
+| TypeSelector tooltip อาจออกนอกจอ | บน viewport แคบ 768-1023px tooltip อาจถูกตัด | ไม่กระทบ mobile (hover ไม่ทำงาน); desktop ปกติ |

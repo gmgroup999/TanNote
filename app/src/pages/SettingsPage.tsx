@@ -22,7 +22,6 @@ function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (
 import {
   getReminderSettings, saveReminderSettings, type ReminderSettings,
   fetchUsage, saveCloudBackupEnabled, type UsageSummary,
-  readLineUserId, saveLineUserId,
 } from '../lib/api';
 import UsageIndicator from '../components/UsageIndicator';
 
@@ -48,9 +47,6 @@ export default function SettingsPage({ onOpenPricing }: { onOpenPricing: () => v
   const [saved, setSaved]             = useState(false);
   const [usage, setUsage]             = useState<UsageSummary | null>(null);
   const [cloudBackup, setCloudBackup] = useState(false);
-  const [lineId, setLineId]           = useState(() => readLineUserId());
-  const [lineIdSaved, setLineIdSaved] = useState(false);
-
   useEffect(() => {
     Promise.all([
       getReminderSettings(),
@@ -85,12 +81,6 @@ export default function SettingsPage({ onOpenPricing }: { onOpenPricing: () => v
     await saveCloudBackupEnabled(next);
   }
 
-  function handleSaveLineId() {
-    saveLineUserId(lineId);
-    setLineIdSaved(true);
-    setTimeout(() => setLineIdSaved(false), 2000);
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-svh text-gray-400 text-sm">
@@ -103,11 +93,11 @@ export default function SettingsPage({ onOpenPricing }: { onOpenPricing: () => v
 
   return (
     <div className="min-h-svh bg-[#FAFAF7] dark:bg-[#18181A]">
-      <header className="w-full max-w-md mx-auto px-5 pt-10 pb-4">
+      <header className="w-full max-w-md lg:max-w-xl mx-auto px-5 pt-10 pb-4">
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 tracking-tight">ตั้งค่า</h1>
       </header>
 
-      <main className="w-full max-w-md mx-auto px-5 pb-24 flex flex-col gap-5">
+      <main className="w-full max-w-md lg:max-w-xl mx-auto px-5 pb-24 flex flex-col gap-5">
 
         {/* Usage indicator */}
         <UsageIndicator onOpenPricing={onOpenPricing} />
@@ -181,36 +171,7 @@ export default function SettingsPage({ onOpenPricing }: { onOpenPricing: () => v
           </div>
         </section>
 
-        {/* LINE User ID for push notifications */}
-        <section className="bg-white dark:bg-[#252527] rounded-2xl border border-gray-100 dark:border-[#333336] shadow-sm p-4">
-          <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-0.5">LINE User ID</p>
-          <p className="text-xs text-gray-400 dark:text-gray-600 mb-3">
-            ใช้รับการแจ้งเตือนผ่าน LINE — ขึ้นต้นด้วย "U" ยาว 33 ตัวอักษร
-          </p>
-          <input
-            type="text"
-            value={lineId}
-            onChange={(e) => { setLineId(e.target.value); setLineIdSaved(false); }}
-            placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            className="w-full rounded-xl border border-gray-200 dark:border-[#444448] bg-white dark:bg-[#1E1E20] px-3 py-2 text-sm font-mono text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-[#E24B4A]/30"
-          />
-          <div className="flex items-center justify-between mt-2">
-            <p className="text-[10px] text-gray-400 dark:text-gray-600">
-              ดูได้ที่ LINE Developers Console → Messaging API → Users
-            </p>
-            <button
-              onClick={handleSaveLineId}
-              disabled={!lineId.trim()}
-              className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors disabled:opacity-40 ${
-                lineIdSaved ? 'bg-green-100 text-green-700' : 'bg-[#E24B4A]/10 text-[#E24B4A] hover:bg-[#E24B4A]/20'
-              }`}
-            >
-              {lineIdSaved ? '✓ บันทึกแล้ว' : 'บันทึก'}
-            </button>
-          </div>
-        </section>
-
-        {/* Save reminders settings */}
+{/* Save reminders settings */}
         <button
           onClick={handleSave}
           disabled={saving}

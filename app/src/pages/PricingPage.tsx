@@ -1,6 +1,8 @@
-import { PLAN_INFO, PLAN_LIMITS, type Plan } from '../config/plans';
+import { PLAN_INFO, PLAN_LIMITS, EARLY_BIRD_TOTAL, EARLY_BIRD_TAKEN, type Plan } from '../config/plans';
 
 const PLANS: Plan[] = ['free', 'starter', 'pro', 'extra'];
+const EARLY_BIRD_LEFT = EARLY_BIRD_TOTAL - EARLY_BIRD_TAKEN;
+const EARLY_BIRD_ACTIVE = EARLY_BIRD_LEFT > 0;
 
 function formatLimit(val: number | null, unit: string): string {
   return val === null ? `∞ ${unit}` : `${val.toLocaleString()} ${unit}`;
@@ -33,6 +35,19 @@ export default function PricingPage({ onBack }: { onBack: () => void }) {
         </button>
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 tracking-tight">แพลนราคา</h1>
         <p className="text-sm text-gray-500 dark:text-gray-500 mt-0.5">ทุกแพลนเข้าถึงทุกฟีเจอร์ — ต่างกันแค่ปริมาณ</p>
+
+        {/* Early bird banner */}
+        {EARLY_BIRD_ACTIVE && (
+          <div className="mt-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-2xl px-4 py-3 flex items-start gap-3">
+            <span className="text-xl leading-none mt-0.5">🎉</span>
+            <div>
+              <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Early Bird — {EARLY_BIRD_LEFT} ที่นั่งสุดท้าย!</p>
+              <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                100 คนแรกได้ราคาพิเศษ ล็อกตลอดชีพ · ราคาจะกลับสู่ปกติเมื่อครบ
+              </p>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Plan cards */}
@@ -65,10 +80,18 @@ export default function PricingPage({ onBack }: { onBack: () => void }) {
                   </div>
                   <div className="text-right">
                     {info.price === 0 ? (
-                      <p className="text-2xl font-bold text-gray-900">ฟรี</p>
+                      <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">ฟรี</p>
+                    ) : EARLY_BIRD_ACTIVE && info.earlyBirdPrice ? (
+                      <>
+                        <p className="text-xs text-gray-400 line-through">฿{info.price.toLocaleString()}</p>
+                        <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+                          ฿{info.earlyBirdPrice.toLocaleString()}
+                        </p>
+                        <p className="text-[10px] text-amber-600 dark:text-amber-500 font-medium">/เดือน · early bird</p>
+                      </>
                     ) : (
                       <>
-                        <p className="text-2xl font-bold text-gray-900">
+                        <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
                           ฿{info.price.toLocaleString()}
                         </p>
                         <p className="text-xs text-gray-400">/เดือน</p>
@@ -143,10 +166,11 @@ export default function PricingPage({ onBack }: { onBack: () => void }) {
           );
         })}
 
-        <p className="text-center text-xs text-gray-400 pt-2 leading-relaxed">
+        <p className="text-center text-xs text-gray-400 dark:text-gray-600 pt-2 leading-relaxed">
           ราคาในสกุลเงินบาท · ยกเลิกได้ทุกเมื่อ
-          <br />
-          Early bird 100 คนแรก: ลด 25% ตลอดชีพ
+          {EARLY_BIRD_ACTIVE && (
+            <><br /><span className="text-amber-600 dark:text-amber-500 font-medium">Early bird ราคาล็อกตลอดชีพ ไม่ปรับราคาขึ้นอีก</span></>
+          )}
         </p>
       </main>
     </div>

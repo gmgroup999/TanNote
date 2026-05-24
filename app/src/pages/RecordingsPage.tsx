@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { listAudioRecordings, deleteAudio, updateAudioRecord, type AudioRecord, type StructuredTag, type SuggestedLink, type ReminderItem } from '../lib/db';
 import { RECORDING_TYPES, type RecordingTypeKey } from '../config/recordingTypes';
-import { transcribeAudio, confirmNoteLink, deleteNote, deleteReminder } from '../lib/api';
+import { transcribeAudio, confirmNoteLink, deleteNote, deleteReminder, reprocessNote, patchNote, uploadR2Backup } from '../lib/api';
+import { exportMarkdown, exportText, exportPdf } from '../lib/export';
+import { getPlanCache } from '../lib/planCache';
+import { PLAN_LIMITS, type Plan } from '../config/plans';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -337,6 +340,45 @@ function AiPanel({
   );
 }
 
+// ─── CompactListItem (desktop left panel) ────────────────────────────────────
+
+function CompactListItem({
+  record,
+  selected,
+  onClick,
+}: {
+  record: AudioRecord;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const typeLabel = RECORDING_TYPES[record.recordingType as RecordingTypeKey]?.label ?? record.recordingType;
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left px-4 py-3 flex flex-col gap-0.5 border-l-2 transition-colors ${
+        selected
+          ? 'border-[#E24B4A] bg-[#E24B4A]/5 dark:bg-[#E24B4A]/10'
+          : 'border-transparent hover:bg-gray-50 dark:hover:bg-[#2A2A2C]'
+      }`}
+    >
+      <p className={`text-sm font-medium truncate leading-snug ${
+        selected ? 'text-[#E24B4A]' : 'text-gray-800 dark:text-gray-200'
+      }`}>
+        {record.aiStatus === 'done' && record.title ? record.title : typeLabel}
+      </p>
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] text-gray-400 dark:text-gray-600">{formatDate(record.createdAt)}</span>
+        {record.aiStatus === 'done' && <span className="text-[10px] text-green-500 font-medium">✓ AI</span>}
+        {record.aiStatus === 'processing' && <span className="text-[10px] text-[#E24B4A]">⟳ ประมวลผล</span>}
+        {record.aiStatus === 'error' && <span className="text-[10px] text-red-400">⚠ ผิดพลาด</span>}
+      </div>
+      <span className="text-[10px] bg-gray-100 dark:bg-[#2A2A2C] text-gray-500 dark:text-gray-500 rounded-full px-2 py-0.5 self-start mt-0.5">
+        {typeLabel}
+      </span>
+    </button>
+  );
+}
+
 // ─── RecordingItem ────────────────────────────────────────────────────────────
 
 type AiStep = 'uploading' | 'processing';
@@ -357,11 +399,15 @@ function RecordingItem({
 }) {
   const [record, setRecord] = useState(initialRecord);
   const [aiStep, setAiStep] = useState<AiStep | null>(null);
+  const [pendingType, setPendingType] = useState(initialRecord.recordingType);
 
   const typeLabel = RECORDING_TYPES[record.recordingType as RecordingTypeKey]?.label ?? record.recordingType;
   const sizeMB = (record.blob.size / 1024 / 1024).toFixed(1);
   const isProcessing = record.aiStatus === 'processing';
   const isDone = record.aiStatus === 'done';
+  const typeChanged = isDone && pendingType !== record.recordingType;
+  const isExtraPlan = (PLAN_LIMITS[getPlanCache() as Plan] ?? PLAN_LIMITS.free).cloud_backup;
+  const [backingUp, setBackingUp] = useState(false);
 
   async function applyPatch(patch: Partial<AudioRecord>) {
     setRecord((r) => ({ ...r, ...patch }));
@@ -369,13 +415,16 @@ function RecordingItem({
     onUpdate(record.id, patch);
   }
 
-  async function runAi() {
-    await applyPatch({ aiStatus: 'processing' });
+  async function runAi(overrideType?: string) {
+    const type = overrideType ?? record.recordingType;
+    await applyPatch({ aiStatus: 'processing', recordingType: type });
 
     try {
-      const result = await transcribeAudio(record, (step) => setAiStep(step));
+      const effectiveRecord = { ...record, recordingType: type };
+      const result = await transcribeAudio(effectiveRecord, (step) => setAiStep(step));
       await applyPatch({
         aiStatus:      'done',
+        recordingType: type,
         noteId:        result.note_id,
         transcript:    result.transcript,
         detectedType:  result.detected_type,
@@ -403,9 +452,23 @@ function RecordingItem({
     }
   }
 
+  async function handleReprocess() {
+    if (record.noteId) await reprocessNote(record.noteId);
+    await runAi(pendingType);
+  }
+
+  async function handleCloudBackup() {
+    if (!record.noteId || !record.blob) return;
+    setBackingUp(true);
+    const url = await uploadR2Backup(record.blob, record.noteId);
+    if (url) await applyPatch({ hasCloudBackup: true, cloudAudioUrl: url });
+    setBackingUp(false);
+  }
+
   async function handleTagRemove(tagName: string) {
     const updated = record.structuredTags?.filter((t) => t.name !== tagName) ?? [];
     await applyPatch({ structuredTags: updated });
+    if (record.noteId) patchNote(record.noteId, { remove_tags: [tagName] }); // fire-and-forget
   }
 
   async function handleLinkAnswer(linkId: string, confirmed: boolean) {
@@ -469,6 +532,91 @@ function RecordingItem({
       )}
 
       <AiPanel record={record} onTagRemove={handleTagRemove} onLinkAnswer={handleLinkAnswer} onReminderDelete={handleReminderDelete} />
+
+      {/* Cloud backup (Extra tier) */}
+      {isDone && isExtraPlan && (
+        record.hasCloudBackup ? (
+          <div className="flex items-center gap-2 text-xs text-green-600 dark:text-green-400 pt-1">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+            </svg>
+            สำรองไฟล์เสียงบน Cloud แล้ว
+          </div>
+        ) : (
+          <button
+            onClick={handleCloudBackup}
+            disabled={backingUp}
+            className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 hover:text-[#E24B4A] transition-colors pt-1 disabled:opacity-50"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+            </svg>
+            {backingUp ? 'กำลังอัปโหลด...' : 'สำรองเสียงบน Cloud'}
+          </button>
+        )
+      )}
+
+      {/* Cross-device audio player — only when local blob missing but cloud URL exists */}
+      {record.hasCloudBackup && record.cloudAudioUrl && record.blob.size === 0 && (
+        <div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 p-3">
+          <p className="text-[11px] text-blue-600 dark:text-blue-400 mb-2">เล่นจาก Cloud (ไฟล์เสียงไม่มีในเครื่องนี้)</p>
+          <audio controls src={record.cloudAudioUrl} className="w-full h-8" />
+        </div>
+      )}
+
+      {/* Export buttons — gated by plan */}
+      {isDone && (() => {
+        const planLimits = PLAN_LIMITS[getPlanCache() as Plan] ?? PLAN_LIMITS.free;
+        if (!planLimits.can_export) {
+          return (
+            <p className="text-[11px] text-gray-400 dark:text-gray-600 pt-1">
+              Export ใช้ได้ตั้งแต่แพลน Starter ขึ้นไป
+            </p>
+          );
+        }
+        return (
+          <div className="flex items-center gap-1.5 flex-wrap pt-1">
+            <span className="text-[10px] text-gray-400 dark:text-gray-600 mr-0.5">Export:</span>
+            <button onClick={() => exportText(record)}
+              className="text-[11px] px-2.5 py-1 rounded-full bg-gray-100 dark:bg-[#333336] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-[#444448] transition-colors">
+              .txt
+            </button>
+            <button onClick={() => exportMarkdown(record)}
+              className="text-[11px] px-2.5 py-1 rounded-full bg-gray-100 dark:bg-[#333336] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-[#444448] transition-colors">
+              .md
+            </button>
+            {planLimits.can_export_pdf && (
+              <button onClick={() => exportPdf(record)}
+                className="text-[11px] px-2.5 py-1 rounded-full bg-gray-100 dark:bg-[#333336] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-[#444448] transition-colors">
+                PDF
+              </button>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Re-process: change recording type after AI done */}
+      {isDone && !isProcessing && (
+        <div className="flex items-center gap-2 pt-1 border-t border-gray-50 dark:border-[#2A2A2C]">
+          <select
+            value={pendingType}
+            onChange={(e) => setPendingType(e.target.value)}
+            className="flex-1 text-xs bg-gray-50 dark:bg-[#1E1E20] border border-gray-200 dark:border-[#333336] rounded-lg px-2.5 py-1.5 text-gray-600 dark:text-gray-400 focus:outline-none"
+          >
+            {Object.entries(RECORDING_TYPES).map(([key, val]) => (
+              <option key={key} value={key}>{val.label}</option>
+            ))}
+          </select>
+          {typeChanged && (
+            <button
+              onClick={handleReprocess}
+              className="flex-shrink-0 text-xs font-medium bg-[#E24B4A] text-white px-3 py-1.5 rounded-lg hover:bg-[#C73B3A] transition-colors"
+            >
+              ประมวลผลใหม่
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -485,6 +633,7 @@ export default function RecordingsPage({
   const [records, setRecords] = useState<AudioRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [batchRunning, setBatchRunning] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const noteRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
@@ -495,10 +644,18 @@ export default function RecordingsPage({
     })();
   }, []);
 
+  // Auto-select first record on desktop after load
+  useEffect(() => {
+    if (!loading && records.length > 0) {
+      setSelectedId((prev) => prev ?? records[0].id);
+    }
+  }, [loading, records.length]);
+
   useEffect(() => {
     if (!focusNoteId || loading) return;
     const target = records.find(r => r.noteId === focusNoteId);
     if (!target) return;
+    setSelectedId(target.id); // desktop: show in right panel
     const el = noteRefs.current[target.id];
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -563,91 +720,153 @@ export default function RecordingsPage({
 
   const pendingCount = records.filter((r) => !r.aiStatus || r.aiStatus === 'error').length;
 
-  // All unique topics/hashtags for knowledge graph cloud
   const allHashtags = Array.from(
     new Set(records.flatMap((r) =>
       r.structuredTags?.map((t) => t.name) ?? r.hashtags ?? []
     ))
   );
 
+  const selectedRecord = records.find((r) => r.id === selectedId) ?? null;
+
+  // ── shared sub-sections ───────────────────────────────────────────────────
+
+  const batchButton = pendingCount > 0 && (
+    <button onClick={runBatch} disabled={batchRunning}
+      className="flex items-center justify-center gap-2 w-full rounded-xl py-3 text-sm font-medium bg-[#E24B4A] text-white hover:bg-[#C73B3A] disabled:opacity-60 transition-colors shadow-sm">
+      {batchRunning ? (
+        <>
+          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+          </svg>
+          กำลังประมวลผล...
+        </>
+      ) : (
+        <>
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+          ถอดเสียง + วิเคราะห์ทั้งหมด ({pendingCount} รายการ)
+        </>
+      )}
+    </button>
+  );
+
+  const hashtagCloud = allHashtags.length > 0 && (
+    <div className="bg-white dark:bg-[#252527] rounded-2xl border border-gray-100 dark:border-[#333336] shadow-sm p-4">
+      <p className="text-xs font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wide mb-2.5">
+        🕸️ หัวข้อทั้งหมด
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {allHashtags.map((tag) => {
+          const count = records.filter((r) =>
+            r.structuredTags?.some((t) => t.name === tag) || r.hashtags?.includes(tag)
+          ).length;
+          return (
+            <span key={tag}
+              className="text-xs bg-[#E24B4A]/8 text-[#E24B4A] rounded-full px-2.5 py-0.5 border border-[#E24B4A]/20"
+              title={`${count} รายการ`}>
+              {tag}
+              {count > 1 && <span className="ml-1 opacity-60">×{count}</span>}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const emptyState = (
+    <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+      <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-[#333336] flex items-center justify-center">
+        <svg className="w-8 h-8 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+        </svg>
+      </div>
+      <p className="text-gray-500 dark:text-gray-500 text-sm">ยังไม่มีการบันทึก</p>
+      <p className="text-gray-400 dark:text-gray-600 text-xs">กดปุ่มไมค์ที่หน้าบันทึกเพื่อเริ่ม</p>
+    </div>
+  );
+
   return (
-    <div className="min-h-svh flex flex-col bg-[#FAFAF7] dark:bg-[#18181A]">
-      <header className="w-full max-w-md mx-auto px-5 pt-10 pb-4">
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 tracking-tight">รายการบันทึก</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-500 mt-0.5">เสียงทั้งหมดเก็บในเครื่องของคุณ</p>
-      </header>
+    <div className="bg-[#FAFAF7] dark:bg-[#18181A]">
 
-      <main className="w-full max-w-md mx-auto px-5 flex-1 flex flex-col gap-4 pb-6">
-        {loading ? (
-          <div className="flex items-center justify-center py-20 text-gray-400 dark:text-gray-600 text-sm">กำลังโหลด...</div>
-        ) : records.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
-            <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-[#333336] flex items-center justify-center">
-              <svg className="w-8 h-8 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
-              </svg>
-            </div>
-            <p className="text-gray-500 dark:text-gray-500 text-sm">ยังไม่มีการบันทึก</p>
-            <p className="text-gray-400 dark:text-gray-600 text-xs">กดปุ่มไมค์ที่หน้าบันทึกเพื่อเริ่ม</p>
+      {/* ── Desktop: master-detail (lg+) ─────────────────────────────────── */}
+      <div className="hidden lg:flex" style={{ height: '100svh', overflow: 'hidden' }}>
+
+        {/* Left panel — scrollable list */}
+        <div className="w-80 flex-shrink-0 flex flex-col border-r border-gray-100 dark:border-[#333336] bg-white dark:bg-[#1E1E20] overflow-hidden">
+          <div className="px-5 pt-8 pb-3 flex-shrink-0">
+            <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 tracking-tight">รายการบันทึก</h1>
+            <p className="text-xs text-gray-400 dark:text-gray-600 mt-0.5">เสียงเก็บในเครื่องของคุณ</p>
           </div>
-        ) : (
-          <>
-            {/* Batch AI button */}
-            {pendingCount > 0 && (
-              <button onClick={runBatch} disabled={batchRunning}
-                className="flex items-center justify-center gap-2 w-full rounded-xl py-3 text-sm font-medium bg-[#E24B4A] text-white hover:bg-[#C73B3A] disabled:opacity-60 transition-colors shadow-sm">
-                {batchRunning ? (
-                  <>
-                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                    </svg>
-                    กำลังประมวลผล...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                    </svg>
-                    ถอดเสียง + วิเคราะห์ทั้งหมด ({pendingCount} รายการ)
-                  </>
-                )}
-              </button>
-            )}
 
-            {/* Knowledge graph hashtag cloud */}
-            {allHashtags.length > 0 && (
-              <div className="bg-white dark:bg-[#252527] rounded-2xl border border-gray-100 dark:border-[#333336] shadow-sm p-4">
-                <p className="text-xs font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wide mb-2.5">
-                  🕸️ หัวข้อทั้งหมด (Knowledge Graph)
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {allHashtags.map((tag) => {
-                    const count = records.filter((r) =>
-                      r.structuredTags?.some((t) => t.name === tag) || r.hashtags?.includes(tag)
-                    ).length;
-                    return (
-                      <span key={tag}
-                        className="text-xs bg-[#E24B4A]/8 text-[#E24B4A] rounded-full px-2.5 py-0.5 border border-[#E24B4A]/20"
-                        title={`${count} รายการ`}>
-                        {tag}
-                        {count > 1 && <span className="ml-1 opacity-60">×{count}</span>}
-                      </span>
-                    );
-                  })}
+          {loading ? (
+            <div className="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-600 text-sm">กำลังโหลด...</div>
+          ) : records.length === 0 ? (
+            <div className="flex-1">{emptyState}</div>
+          ) : (
+            <div className="flex-1 overflow-y-auto flex flex-col">
+              {pendingCount > 0 && <div className="px-4 pt-1 pb-2">{batchButton}</div>}
+              <p className="text-xs text-gray-400 dark:text-gray-600 px-4 pb-2">{records.length} รายการ</p>
+              {records.map((r) => (
+                <CompactListItem
+                  key={r.id}
+                  record={r}
+                  selected={r.id === selectedId}
+                  onClick={() => setSelectedId(r.id)}
+                />
+              ))}
+              {allHashtags.length > 0 && <div className="px-4 py-3">{hashtagCloud}</div>}
+            </div>
+          )}
+        </div>
+
+        {/* Right panel — detail */}
+        <div className="flex-1 overflow-y-auto">
+          {selectedRecord ? (
+            <div className="max-w-2xl mx-auto px-8 py-8">
+              <RecordingItem
+                key={selectedRecord.id}
+                record={selectedRecord}
+                onDelete={(id) => { handleDelete(id); setSelectedId(null); }}
+                onUpdate={handleUpdate}
+              />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <p className="text-gray-400 dark:text-gray-600 text-sm">เลือกรายการจากด้านซ้าย</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Mobile: single-column (< lg) ──────────────────────────────────── */}
+      <div className="lg:hidden min-h-svh flex flex-col">
+        <header className="w-full max-w-md mx-auto px-5 pt-10 pb-4">
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 tracking-tight">รายการบันทึก</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-500 mt-0.5">เสียงทั้งหมดเก็บในเครื่องของคุณ</p>
+        </header>
+
+        <main className="w-full max-w-md mx-auto px-5 flex-1 flex flex-col gap-4 pb-6">
+          {loading ? (
+            <div className="flex items-center justify-center py-20 text-gray-400 dark:text-gray-600 text-sm">กำลังโหลด...</div>
+          ) : records.length === 0 ? (
+            emptyState
+          ) : (
+            <>
+              {batchButton}
+              <p className="text-xs text-gray-400 dark:text-gray-600">{records.length} รายการ</p>
+              {records.map((r) => (
+                <div key={r.id} ref={el => { noteRefs.current[r.id] = el; }} className="rounded-2xl transition-shadow duration-500">
+                  <RecordingItem record={r} onDelete={handleDelete} onUpdate={handleUpdate} />
                 </div>
-              </div>
-            )}
+              ))}
+              {hashtagCloud}
+            </>
+          )}
+        </main>
+      </div>
 
-            <p className="text-xs text-gray-400 dark:text-gray-600">{records.length} รายการ</p>
-            {records.map((r) => (
-              <div key={r.id} ref={el => { noteRefs.current[r.id] = el; }} className="rounded-2xl transition-shadow duration-500">
-                <RecordingItem record={r} onDelete={handleDelete} onUpdate={handleUpdate} />
-              </div>
-            ))}
-          </>
-        )}
-      </main>
     </div>
   );
 }

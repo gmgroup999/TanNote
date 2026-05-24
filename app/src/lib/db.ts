@@ -47,6 +47,9 @@ export interface AudioRecord {
   suggestedLinks?: SuggestedLink[];
   // Phase 5
   reminders?: ReminderItem[];
+  // Extra: cloud backup
+  hasCloudBackup?: boolean;
+  cloudAudioUrl?:  string;
 }
 
 interface TanNoteDB extends DBSchema {
