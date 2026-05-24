@@ -63,13 +63,20 @@ Deno.serve(async (req: Request) => {
   const bodyText = await req.text();
   const sig      = req.headers.get("x-line-signature") ?? "";
 
-  if (LINE_SECRET && !(await verifySignature(bodyText, sig))) {
-    return respond({ error: "Invalid signature" }, 401);
-  }
-
   let payload: { events?: any[] };
   try { payload = JSON.parse(bodyText); }
   catch { return respond({ error: "Invalid JSON" }, 400); }
+
+  // LINE Developer Console verification ping sends empty events — return 200 immediately
+  if ((payload.events ?? []).length === 0) {
+    return respond({ ok: true });
+  }
+
+  // Verify signature for real events (postbacks, messages, etc.)
+  if (LINE_SECRET && !(await verifySignature(bodyText, sig))) {
+    console.error("[line-webhook] signature mismatch, sig:", sig);
+    return respond({ error: "Invalid signature" }, 401);
+  }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SVC);
 
