@@ -146,15 +146,16 @@ export default function App() {
   const [session, setSession]           = useState<Session | null>(null);
   const [authLoading, setAuthLoading]   = useState(true);
 
-  useEffect(() => { initLiff(); }, []);
-
   useEffect(() => {
-    supabaseClient.auth.getSession().then(({ data }) => {
-      const s = data.session;
-      setSession(s);
-      if (s?.user.id) setLineUserId(authUserId(s.user.id));
-      setAuthLoading(false);
-    });
+    Promise.all([
+      supabaseClient.auth.getSession().then(({ data }) => {
+        const s = data.session;
+        setSession(s);
+        if (s?.user.id) setLineUserId(authUserId(s.user.id));
+      }),
+      initLiff(),
+    ]).finally(() => setAuthLoading(false));
+
     const { data: { subscription } } = supabaseClient.auth.onAuthStateChange((event, s) => {
       setSession(s);
       if (s?.user.id) setLineUserId(authUserId(s.user.id));
