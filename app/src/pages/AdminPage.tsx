@@ -94,7 +94,7 @@ export default function AdminPage({ session }: { session: Session }) {
         callAdmin(session, { action: 'get_stats'  }),
       ]);
       setUsers((usersRes.users as AdminUser[]) ?? []);
-      setStats(statsRes as Stats);
+      setStats(statsRes as unknown as Stats);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'โหลดไม่ได้');
     } finally {
