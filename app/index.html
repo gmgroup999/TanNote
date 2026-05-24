@@ -1,13 +1,51 @@
 <!doctype html>
-<html lang="en">
+<html lang="th">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#E24B4A" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- iOS PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="TanNote" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+
+    <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>app</title>
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+
+    <!-- SEO -->
+    <title>TanNote — AI Voice Note ภาษาไทย</title>
+    <meta name="description" content="บันทึกเสียงด้วย AI — ถอดเสียง สรุป แท็ก เชื่อมโยงความคิด ภาษาไทย ใช้ง่าย ไม่ต้องพิมพ์" />
+    <meta name="keywords" content="voice note, บันทึกเสียง, AI, ภาษาไทย, สรุป, tannote" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="TanNote — AI Voice Note ภาษาไทย" />
+    <meta property="og:description" content="บันทึกเสียงด้วย AI — ถอดเสียง สรุป แท็ก เชื่อมโยงความคิด" />
+    <meta property="og:image" content="/icons/icon-512.png" />
+    <meta property="og:url" content="https://tannote.z-node.cc" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="TanNote — AI Voice Note ภาษาไทย" />
+    <meta name="twitter:description" content="บันทึกเสียงด้วย AI ถอดเสียง สรุป แท็ก" />
+    <meta name="twitter:image" content="/icons/icon-512.png" />
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {});
+        });
+      }
+    </script>
   </body>
 </html>
