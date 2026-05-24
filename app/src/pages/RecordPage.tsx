@@ -500,7 +500,15 @@ export default function RecordPage() {
               </div>
             )}
             {aiStep === 'error' && (
-              <p className="text-xs text-red-500">วิเคราะห์ไม่สำเร็จ — ลองได้ใหม่ที่หน้ารายการ</p>
+              <div className="flex flex-col gap-2">
+                <p className="text-xs text-red-500">วิเคราะห์ไม่สำเร็จ — ลองอีกครั้งหรือไปหน้ารายการ</p>
+                <button
+                  onClick={() => { setError(null); runAiOnLast(); }}
+                  className="flex items-center justify-center gap-2 w-full rounded-xl py-2.5 text-sm font-medium border border-[#E24B4A] text-[#E24B4A] hover:bg-[#E24B4A]/10 transition-colors"
+                >
+                  ลองอีกครั้ง
+                </button>
+              </div>
             )}
           </div>
         )}

@@ -40,6 +40,15 @@ function getEdgeFunctionUrl(name: string): string {
   return `${base}/functions/v1/${name}`;
 }
 
+// Supabase gateway requires Authorization: Bearer (not just apikey) to route to Edge Functions
+function authHeaders(): Record<string, string> {
+  if (!SUPABASE_ANON) return {};
+  return {
+    "apikey":        SUPABASE_ANON,
+    "Authorization": `Bearer ${SUPABASE_ANON}`,
+  };
+}
+
 function restUrl(table: string, query = "") {
   const base = SUPABASE_URL?.replace(/\/$/, "");
   return `${base}/rest/v1/${table}${query ? `?${query}` : ""}`;
@@ -80,7 +89,7 @@ export async function transcribeAudio(
   const res = await fetch(url, {
     method:  "POST",
     headers: {
-      ...(SUPABASE_ANON ? { apikey: SUPABASE_ANON } : {}),
+      ...authHeaders(),
       "x-line-user-id": getLiffUserId(),
     },
     body: form,
@@ -122,7 +131,7 @@ export async function uploadR2Backup(blob: Blob, noteId: string): Promise<string
     const res = await fetch(getEdgeFunctionUrl("r2-backup"), {
       method:  "POST",
       headers: {
-        ...(SUPABASE_ANON ? { apikey: SUPABASE_ANON } : {}),
+        ...authHeaders(),
         "x-line-user-id": getLiffUserId(),
       },
       body: form,
@@ -141,7 +150,7 @@ export async function patchNote(
   await fetch(getEdgeFunctionUrl("patch-note"), {
     method:  "PATCH",
     headers: {
-      ...(SUPABASE_ANON ? { apikey: SUPABASE_ANON } : {}),
+      ...authHeaders(),
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ note_id: noteId, ...patch }),
@@ -215,7 +224,7 @@ export async function askNotes(question: string, history: ChatHistory[] = [], lo
   const res = await fetch(url, {
     method:  "POST",
     headers: {
-      ...(SUPABASE_ANON ? { apikey: SUPABASE_ANON } : {}),
+      ...authHeaders(),
       "Content-Type":  "application/json",
       "x-line-user-id": getLiffUserId(),
     },
@@ -256,7 +265,7 @@ export async function saveMemory(key: string, value: string, source = "confirmed
   await fetch(getEdgeFunctionUrl("save-memory"), {
     method:  "POST",
     headers: {
-      ...(SUPABASE_ANON ? { apikey: SUPABASE_ANON } : {}),
+      ...authHeaders(),
       "Content-Type":   "application/json",
       "x-line-user-id": lineUserId,
     },
