@@ -134,24 +134,37 @@ Deno.serve(async (req: Request) => {
     const { data: userRow } = await supabase
       .from("users_profile")
       .upsert(profilePatch, { onConflict: "line_user_id" })
-      .select("id, plan")
+      .select("id, plan, is_suspended, plan_expires_at")
       .single();
     const userId: string | null = userRow?.id ?? null;
-    const userPlan = (userRow?.plan as string) ?? "free";
 
-    // ── 2b. Check recording quota ────────────────────────────────────────────
-    const period    = currentPeriod();
-    const recLimit  = PLAN_LIMITS[userPlan]?.recording_minutes ?? PLAN_LIMITS.free.recording_minutes;
-    if (userId && recLimit !== null && !lineUserId.startsWith("dev_")) {
+    // ── 2a. Check suspension ─────────────────────────────────────────────────
+    if (userRow?.is_suspended) {
+      return respond({ error: "บัญชีถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแล" }, 403);
+    }
+
+    // Effective plan — downgrade on-the-fly if plan_expires_at has passed
+    const _planExpiresAt = userRow?.plan_expires_at ? new Date(userRow.plan_expires_at as string) : null;
+    const userPlan = (_planExpiresAt && _planExpiresAt < new Date()) ? "free" : ((userRow?.plan as string) ?? "free");
+
+    // ── 2b. Check recording + ai_suggest quotas (single DB query) ───────────
+    const period       = currentPeriod();
+    const recLimit     = PLAN_LIMITS[userPlan]?.recording_minutes ?? PLAN_LIMITS.free.recording_minutes;
+    const suggestLimit = PLAN_LIMITS[userPlan]?.ai_suggest        ?? PLAN_LIMITS.free.ai_suggest;
+    if (userId && !lineUserId.startsWith("dev_")) {
       const { data: usageRow } = await supabase
         .from("usage_tracking")
-        .select("recording_minutes")
+        .select("recording_minutes, ai_suggest_count")
         .eq("user_id", userId)
         .eq("period", period)
         .maybeSingle();
       const minutesUsed = (usageRow?.recording_minutes as number) ?? 0;
-      if (minutesUsed >= recLimit) {
+      const suggestUsed = (usageRow?.ai_suggest_count  as number) ?? 0;
+      if (recLimit !== null && minutesUsed >= recLimit) {
         return quotaExceededResponse(userPlan, "บันทึกเสียง", recLimit, minutesUsed);
+      }
+      if (suggestLimit !== null && suggestUsed >= suggestLimit) {
+        return quotaExceededResponse(userPlan, "AI แนะนำแท็ก", suggestLimit, suggestUsed);
       }
     }
 
@@ -315,11 +328,15 @@ ${autoClause}${appointmentClause}
       status: "done",
     }).eq("id", noteId);
 
-    // ── 9b. Increment recording minutes (fire-and-forget) ───────────────────
+    // ── 9b. Increment recording minutes + ai_suggest_count (fire-and-forget) ──
     if (userId && !lineUserId.startsWith("dev_")) {
       const minutesToAdd = Math.max(1, Math.round(durationSec / 60));
       void (async () => {
         try { await supabase.rpc("increment_recording_minutes", { p_user_id: userId, p_period: period, p_minutes: minutesToAdd }); }
+        catch { /* ignore */ }
+      })();
+      void (async () => {
+        try { await supabase.rpc("increment_ai_suggest_count", { p_user_id: userId, p_period: period }); }
         catch { /* ignore */ }
       })();
     }

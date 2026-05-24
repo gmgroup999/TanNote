@@ -72,15 +72,24 @@ Deno.serve(async (req: Request) => {
     const { data: userRow } = await supabase
       .from("users_profile")
       .upsert({ node_id: NODE_ID, line_user_id: lineUserId }, { onConflict: "line_user_id" })
-      .select("id, plan, nickname, tone")
+      .select("id, plan, is_suspended, plan_expires_at, nickname, tone")
       .single();
-    const userId   = userRow?.id as string | null;
-    const userPlan = (userRow?.plan as string) ?? "free";
+    const userId = userRow?.id as string | null;
+
+    // ── 2a. Check suspension ─────────────────────────────────────────────────
+    if (userRow?.is_suspended) {
+      return respond({ error: "บัญชีถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแล" }, 403);
+    }
+
+    // Effective plan — downgrade on-the-fly if plan_expires_at has passed
+    const _planExpiresAt = userRow?.plan_expires_at ? new Date(userRow.plan_expires_at as string) : null;
+    const userPlan = (_planExpiresAt && _planExpiresAt < new Date()) ? "free" : ((userRow?.plan as string) ?? "free");
+
     const nickname = userRow?.nickname as string | null;
     const tone     = (userRow?.tone as string) ?? "casual";
 
     // ── 2b. Check ask-notes quota ────────────────────────────────────────────
-    const period   = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+    const period   = currentPeriod();
     const askLimit = PLAN_LIMITS[userPlan]?.ask_notes ?? PLAN_LIMITS.free.ask_notes;
     if (userId && askLimit !== null && !lineUserId.startsWith("dev_")) {
       const { data: usageRow } = await supabase
