@@ -46,4 +46,13 @@ export function setLineUserId(id: string): void {
   else localStorage.removeItem(LINE_USER_KEY);
 }
 
+/** Log out of LIFF (clears LIFF token so initLiff won't auto-login on next load). */
+export function logoutLiff(): void {
+  localStorage.removeItem(LINE_USER_KEY);
+  if (!LIFF_ENABLED) return;
+  try {
+    if (liff.isLoggedIn()) liff.logout();
+  } catch { /* ignore if liff not ready */ }
+}
+
 export { LIFF_ENABLED };

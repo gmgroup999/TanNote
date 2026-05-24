@@ -24,7 +24,7 @@ import {
   fetchUsage, saveCloudBackupEnabled, type UsageSummary,
 } from '../lib/api';
 import { signOut } from '../lib/auth';
-import { setLineUserId } from '../lib/liff';
+import { logoutLiff } from '../lib/liff';
 import UsageIndicator from '../components/UsageIndicator';
 
 const TYPE_CONFIG = [
@@ -53,8 +53,8 @@ export default function SettingsPage({ onOpenPricing }: { onOpenPricing: () => v
 
   async function handleSignOut() {
     setSigningOut(true);
-    await signOut();
-    setLineUserId('');
+    logoutLiff();          // clear LIFF token so initLiff won't auto-login on reload
+    await signOut();       // clear Supabase session
     window.location.reload();
   }
   useEffect(() => {
