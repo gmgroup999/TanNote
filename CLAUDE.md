@@ -136,6 +136,19 @@ extra(599): ∞ + cloud backup
 - React Error Boundary: `AppErrorBoundary` class component ใน `App.tsx` ครอบ page content ทั้งหมด
 - ลบ `app/src/lib/gemini.ts` — ไม่มี import อ้างอิงแล้ว
 
+### แท็บนัดหมาย (Reminders Tab) — เสร็จแล้ว (2026-05-26)
+- `RemindersPage.tsx` — ดึง reminders จาก Supabase, แสดงรายการ pending ทั้งหมด
+- Overdue reminders (remind_at < now) → พื้นหลังแดง + badge "เลยเวลาแล้ว"
+- ปุ่มถังขยะลบทีละรายการ (เรียก `deleteReminder()`)
+- รองรับ dark mode ทุก element
+- `App.tsx` — เพิ่ม `'reminders'` ใน Tab type, nav item รูประฆังระหว่าง "ถาม AI" กับ "ตั้งค่า"
+
+### Plan Enforcement Fixes — เสร็จแล้ว (2026-05-26)
+- **Bug 1 (ai_suggest ไม่นับ)**: `transcribe` เพิ่ม quota check ก่อน process + increment `ai_suggest_count` หลัง transcribe สำเร็จ; ดึง `usage_tracking` 1 query แทน 2
+- **Bug 2 (is_suspended ไม่เช็ค)**: `transcribe` + `ask` ดึง `is_suspended` จาก DB → return 403 ทันทีถ้าถูก suspend
+- **Bug 3 (plan_expires_at ไม่ real-time)**: คำนวณ effective plan ทุก request — Starter ที่หมดอายุ treat เป็น free ทันทีโดยไม่ต้องรอ pg_cron
+- **Bug 4 (security definer)**: `increment_ask_count` rebuild ด้วย `security definer` ให้ consistent กับ RPC อื่น
+
 ---
 
 ## ไฟล์สำคัญ
@@ -151,6 +164,7 @@ extra(599): ∞ + cloud backup
 | `app/src/pages/GraphViewPage.tsx` | Force-layout knowledge graph + `useDark` MutationObserver hook |
 | `app/src/pages/PricingPage.tsx` | แสดงแผนราคา + upgrade CTA (LINE: @077vkaxj) |
 | `app/src/pages/LoginPage.tsx` | Magic link login form |
+| `app/src/pages/RemindersPage.tsx` | แท็บนัดหมาย — แสดง pending reminders, overdue แดง, ลบได้ |
 | `app/src/pages/AdminPage.tsx` | Admin dashboard: stats, user list + profile pic/email/primary_use/tone/dates, plan/suspend/delete |
 | `app/src/components/UsageIndicator.tsx` | Progress bars สำหรับ quota ปัจจุบัน |
 | `app/src/lib/db.ts` | IndexedDB helpers + `AudioRecord` interface |
@@ -178,13 +192,58 @@ extra(599): ∞ + cloud backup
 - **URL**: `https://czczwtjgmjnboeeibxcd.supabase.co`
 - **Production URL**: `https://tannote.z-node.cc` (deployed บน Z-Node/Coolify)
 - **Secrets set**: `GEMINI_API_KEY`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET`, `ADMIN_EMAILS`, `NODE_ID` ✅
-- **Functions deployed**: `transcribe`, `ask`, `send-reminders`, `line-webhook`, `save-memory`, `admin-api`, `patch-note`, `r2-backup` ✅ (transcribe redeployed 2026-05-25)
+- **Functions deployed**: `transcribe`, `ask`, `send-reminders`, `line-webhook`, `save-memory`, `admin-api`, `patch-note`, `r2-backup` ✅ (transcribe + ask redeployed 2026-05-26)
 - **Extensions enabled**: `pg_cron`, `pg_net`, `pgvector`
-- **pg_cron job**: schedule id 1 — ทุก 1 นาที → `send-reminders`
+- **pg_cron job**: schedule id 1 — ทุก 1 นาที → `send-reminders`; schedule `enforce-plan-expiry` — ทุกชั่วโมง → downgrade Starter ที่หมดอายุ
 - **LINE Webhook URL**: `https://czczwtjgmjnboeeibxcd.supabase.co/functions/v1/line-webhook` ✅ (active)
 - **LINE bot basicId**: `@077vkaxj`
 - **SMTP**: Resend — smtp.resend.com:465, sender: `onboarding@resend.dev`
-- **Migrations applied**: ทั้งหมดถึง `20260525000001_add_picture_url.sql` ✅
+- **Migrations applied**: ทั้งหมดถึง `20260526000001_fix_increment_ask_security.sql` ✅
+
+---
+
+## สิ่งที่ทำวันนี้ (2026-05-26)
+
+### แท็บนัดหมาย (Reminders Tab)
+| งาน | ผล |
+|---|---|
+| สร้าง `RemindersPage.tsx` | fetch reminders, overdue → แดง + badge, ลบได้, dark mode |
+| อัปเดต `App.tsx` | + `'reminders'` ใน Tab type; nav item ระฆัง; routing ไป RemindersPage |
+| commit `5582419` | push → github.com/gmgroup999/TanNote ✅ |
+
+### LandingPage.md
+| งาน | ผล |
+|---|---|
+| สร้าง `LandingPage.md` | รวมข้อมูลสำหรับทำ landing page: brand, hero, pain points, features, pricing, target audience, competitor comparison, FAQ, page structure, tone of voice |
+
+### Plan Enforcement Fixes (4 bugs)
+| Bug | สิ่งที่แก้ |
+|---|---|
+| 🔴 ai_suggest ไม่นับ | เพิ่ม quota check + increment `ai_suggest_count` ใน `transcribe`; ดึง usage 1 query |
+| 🔴 is_suspended ไม่เช็ค | `transcribe` + `ask` ดึง `is_suspended` → 403 ทันที |
+| 🟡 plan_expires_at ไม่ real-time | คำนวณ effective plan ทุก request ใน `transcribe` + `ask` |
+| 🟡 increment_ask_count ขาด security definer | migration `20260526000001` rebuild function |
+
+### Deploy ✅
+| งาน | ผล |
+|---|---|
+| `transcribe` redeployed | is_suspended + plan_expires_at + ai_suggest quota + increment |
+| `ask` redeployed | is_suspended + plan_expires_at + `currentPeriod()` |
+| Migration `20260526000001` applied | `npx supabase db push` |
+| commit `c7f6f55` | push → github.com/gmgroup999/TanNote ✅ |
+
+---
+
+## ไฟล์ที่แก้ไขวันนี้ (2026-05-26)
+
+| ไฟล์ | สิ่งที่เปลี่ยน |
+|---|---|
+| `app/src/pages/RemindersPage.tsx` | **ไฟล์ใหม่** — แท็บนัดหมาย: fetch, overdue แดง, delete |
+| `app/src/App.tsx` | + `'reminders'` ใน Tab type; nav item ระฆัง; import + routing RemindersPage |
+| `LandingPage.md` | **ไฟล์ใหม่** — Landing page brief: brand, hero, features, pricing, FAQ, page structure |
+| `supabase/functions/transcribe/index.ts` | select `is_suspended, plan_expires_at`; suspension check 403; effective plan; รวม usage query; ai_suggest quota check + increment |
+| `supabase/functions/ask/index.ts` | select `is_suspended, plan_expires_at`; suspension check 403; effective plan; ใช้ `currentPeriod()` |
+| `supabase/migrations/20260526000001_fix_increment_ask_security.sql` | **ไฟล์ใหม่** — rebuild `increment_ask_count` ด้วย `security definer` |
 
 ---
 
@@ -443,33 +502,26 @@ extra(599): ∞ + cloud backup
 
 ## TODO ถัดไป
 
-### 🔴 Publish LIFF Channel (รอ user action — ด่วนที่สุด)
-User ใหม่ทุกคนยังเข้าแอปผ่าน LINE ไม่ได้ (400 Bad Request "developing status"):
-1. [LINE Developer Console](https://developers.line.biz/console/) → เลือก Provider → เลือก **LIFF channel**
-2. แถบ **"Channel settings"** → **Channel status** → กด **"Publish"**
-
-### ตั้ง Supabase Dashboard URL Configuration (รอ user action — ด่วน)
-Magic link จะ redirect ไป localhost ถ้าไม่ตั้ง:
-1. Supabase Dashboard → Authentication → URL Configuration
-2. Site URL: `https://tannote.z-node.cc`
-3. Redirect URLs: เพิ่ม `https://tannote.z-node.cc/**`
-
-### Redeploy บน Z-Node หลัง git push (รอ user action)
-Code อัปเดตแล้วบน GitHub — ต้อง trigger redeploy บน Z-Node/Coolify เพื่อให้ mobile ได้ประเภท `appointment` และ admin panel ใหม่:
+### Redeploy บน Z-Node (รอ user action)
+commit `c7f6f55` push แล้ว — ต้อง trigger redeploy บน Z-Node/Coolify เพื่อให้ mobile ได้ RemindersPage + plan enforcement fixes:
 ```
-Z-Node → TanNote → Redeploy (หรือ auto-deploy ถ้าตั้ง webhook ไว้)
+Z-Node → TanNote → Redeploy
 ```
 
-### ตั้ง LIFF Endpoint URL (รอ user action)
-```
-LINE Developer Console → LIFF → Endpoint URL = https://tannote.z-node.cc
-```
+### ทดสอบ Plan Enforcement end-to-end
+1. ทดสอบ `is_suspended`: suspend user ผ่าน Admin Panel → ลองอัดเสียง → ต้องได้ 403
+2. ทดสอบ `ai_suggest` quota: free user อัด 5 ครั้ง → ครั้งที่ 6 ต้องได้ quota exceeded
+3. ทดสอบ `plan_expires_at`: ตั้ง expires_at ให้เป็นอดีตผ่าน DB → อัดเสียง → ต้องใช้ limit ของ free
 
 ### ทดสอบ LINE Reminder end-to-end
 1. เปิดแอปผ่าน LINE (LIFF) — LIFF user ID จะถูก set อัตโนมัติ
 2. บันทึกโน้ต ประเภท "📅 นัดหมาย" พูดระบุวันเวลาชัดเจน
 3. รอ pg_cron 1 นาที → ดู LINE message
 4. กดปุ่ม postback "เสร็จแล้ว" → verify ใน Supabase reminders table
+
+### สร้าง Landing Page จริง (HTML/CSS)
+- ใช้ข้อมูลจาก `LandingPage.md`
+- ตัดสินใจ: ทำเป็น static HTML แยก หรือ route ใน React SPA
 
 ### รูปโปรไฟล์ใน Admin Panel
 รูปจะแสดงหลังจาก user บันทึกเสียงอย่างน้อย 1 ครั้งหลัง deploy ใหม่ (transcribe จะ upsert picture_url ลง DB) — ยังไม่มีทางดึง picture_url ของ user เก่าโดยไม่มี action ใหม่
@@ -484,11 +536,8 @@ LINE Developer Console → LIFF → Endpoint URL = https://tannote.z-node.cc
 
 | ปัญหา | รายละเอียด | วิธีแก้ |
 |---|---|---|
-| **🔴 LIFF channel ยังไม่ Publish** | user ใหม่ทุกคนเจอ "400 Bad Request — developing status" เข้าแอปผ่าน LINE ไม่ได้ | LINE Developer Console → LIFF channel → Channel settings → **Publish** |
-| Supabase Dashboard URL ยังไม่ได้ตั้ง | magic link redirect ไป localhost ถ้าเข้าจาก production | Dashboard → Auth → URL Configuration → site_url + redirect URL |
-| Z-Node ยังไม่ได้ redeploy | mobile ยังเห็น version เก่า (ไม่มี appointment, admin ใหม่) | Trigger redeploy บน Coolify/Z-Node |
-| LIFF Endpoint URL ยังไม่ได้ตั้ง | LINE auto-login ยังใช้ endpoint เก่า | LINE Developer Console → LIFF → Endpoint URL = https://tannote.z-node.cc |
+| Z-Node ยังไม่ได้ redeploy | commit `c7f6f55` push แล้ว — mobile ยังเห็น version เก่า | Trigger redeploy บน Coolify/Z-Node |
 | รูปโปรไฟล์ user เก่าไม่มี | picture_url ว่างใน DB สำหรับ user ที่ยังไม่ได้บันทึกใหม่หลัง deploy | รอ user บันทึกเสียงครั้งใหม่ (transcribe upsert อัตโนมัติ) |
 | ไมโครโฟน ถามทุก session | Android WebView ไม่ persist mic permission ข้าม session — OS limitation | แก้ไม่ได้ใน code; user กด "อนุญาตเฉพาะครั้งนี้" ทุกครั้งที่เปิด LINE ใหม่ |
 | ระบบชำระเงินยังไม่มี | plan change ทำได้เฉพาะผ่าน admin มือ | integrate payment webhook ในอนาคต |
-| TypeSelector tooltip อาจออกนอกจอ | viewport แคบ 768-1023px tooltip อาจถูกตัด | ไม่กระทบ mobile; desktop ปกติ |
+| Landing page ยังไม่ได้สร้าง | มีข้อมูลใน `LandingPage.md` แล้ว แต่ยังไม่มี HTML จริง | สร้าง static HTML หรือ route ใน React |
