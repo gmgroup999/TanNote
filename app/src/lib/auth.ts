@@ -39,8 +39,10 @@ export function isAdminEmail(email: string | null | undefined): boolean {
   return list.includes(email.toLowerCase());
 }
 
-/** True when the current LIFF userId looks like a real LINE ID (Uxxxxxxxxxx, 33 chars) */
+/** True when the current LIFF userId looks like a real LINE ID (Uxxxxxxxxxx, 33 chars)
+ *  and the user hasn't explicitly signed out. */
 export function isLiffAuthed(): boolean {
+  if (localStorage.getItem('tannote_signed_out') === 'true') return false;
   const id = getLiffUserId();
   return /^U[a-zA-Z0-9]{32}$/.test(id);
 }
