@@ -232,6 +232,13 @@ extra(599): ∞ + cloud backup
 | Migration `20260525000001` applied | `npx supabase db push` |
 | Git push | commit `aefdb89` → github.com/gmgroup999/TanNote ✅ |
 
+### Investigation / Diagnosis (ไม่มีไฟล์เปลี่ยน)
+| สิ่งที่ตรวจสอบ | ผล |
+|---|---|
+| LINE 400 "developing status" | LIFF channel ยังไม่ได้ Publish → user ใหม่เข้าไม่ได้ทุกคน; แก้ที่ LINE Developer Console → Publish |
+| Landing page vs React app conflict | `landing.html` อยู่ที่ `/landing.html`; React SPA อยู่ที่ `/` — ไม่มี conflict; nginx serve แยกกันถูกต้อง |
+| ไมโครโฟน ถามทุก session | Android WebView OS limitation — ไม่สามารถแก้ใน code ได้; user ต้องกด "อนุญาตเฉพาะครั้งนี้" ทุกครั้งที่เปิด LINE ใหม่ |
+
 ---
 
 ## ไฟล์ที่แก้ไขวันนี้ (2026-05-25)
@@ -436,6 +443,11 @@ extra(599): ∞ + cloud backup
 
 ## TODO ถัดไป
 
+### 🔴 Publish LIFF Channel (รอ user action — ด่วนที่สุด)
+User ใหม่ทุกคนยังเข้าแอปผ่าน LINE ไม่ได้ (400 Bad Request "developing status"):
+1. [LINE Developer Console](https://developers.line.biz/console/) → เลือก Provider → เลือก **LIFF channel**
+2. แถบ **"Channel settings"** → **Channel status** → กด **"Publish"**
+
 ### ตั้ง Supabase Dashboard URL Configuration (รอ user action — ด่วน)
 Magic link จะ redirect ไป localhost ถ้าไม่ตั้ง:
 1. Supabase Dashboard → Authentication → URL Configuration
@@ -472,10 +484,11 @@ LINE Developer Console → LIFF → Endpoint URL = https://tannote.z-node.cc
 
 | ปัญหา | รายละเอียด | วิธีแก้ |
 |---|---|---|
-| Supabase Dashboard URL ยังไม่ได้ตั้ง | magic link redirect ไป localhost ถ้าเข้าจาก production | Dashboard → Auth → URL Configuration → ตั้ง site_url + redirect |
+| **🔴 LIFF channel ยังไม่ Publish** | user ใหม่ทุกคนเจอ "400 Bad Request — developing status" เข้าแอปผ่าน LINE ไม่ได้ | LINE Developer Console → LIFF channel → Channel settings → **Publish** |
+| Supabase Dashboard URL ยังไม่ได้ตั้ง | magic link redirect ไป localhost ถ้าเข้าจาก production | Dashboard → Auth → URL Configuration → site_url + redirect URL |
 | Z-Node ยังไม่ได้ redeploy | mobile ยังเห็น version เก่า (ไม่มี appointment, admin ใหม่) | Trigger redeploy บน Coolify/Z-Node |
-| LIFF Endpoint URL ยังไม่ได้ตั้ง | LINE auto-login ยังใช้ endpoint เก่า | LINE Developer Console → LIFF → Endpoint URL |
-| รูปโปรไฟล์ user เก่าไม่มี | picture_url ว่างอยู่ใน DB สำหรับ user ที่ยังไม่ได้บันทึกใหม่ | รอ user บันทึกเสียงครั้งใหม่ (transcribe จะ upsert อัตโนมัติ) |
-| ไมโครโฟน ถามทุก session | LINE WebView (Android) ไม่ persist mic permission ข้าม session — เป็น OS limitation | ไม่สามารถแก้ได้ใน code; user ต้องกด "อนุญาตเฉพาะครั้งนี้" ทุกครั้ง |
+| LIFF Endpoint URL ยังไม่ได้ตั้ง | LINE auto-login ยังใช้ endpoint เก่า | LINE Developer Console → LIFF → Endpoint URL = https://tannote.z-node.cc |
+| รูปโปรไฟล์ user เก่าไม่มี | picture_url ว่างใน DB สำหรับ user ที่ยังไม่ได้บันทึกใหม่หลัง deploy | รอ user บันทึกเสียงครั้งใหม่ (transcribe upsert อัตโนมัติ) |
+| ไมโครโฟน ถามทุก session | Android WebView ไม่ persist mic permission ข้าม session — OS limitation | แก้ไม่ได้ใน code; user กด "อนุญาตเฉพาะครั้งนี้" ทุกครั้งที่เปิด LINE ใหม่ |
 | ระบบชำระเงินยังไม่มี | plan change ทำได้เฉพาะผ่าน admin มือ | integrate payment webhook ในอนาคต |
-| TypeSelector tooltip อาจออกนอกจอ | บน viewport แคบ 768-1023px tooltip อาจถูกตัด | ไม่กระทบ mobile (hover ไม่ทำงาน); desktop ปกติ |
+| TypeSelector tooltip อาจออกนอกจอ | viewport แคบ 768-1023px tooltip อาจถูกตัด | ไม่กระทบ mobile; desktop ปกติ |
