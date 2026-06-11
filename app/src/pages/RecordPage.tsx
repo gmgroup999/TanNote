@@ -5,7 +5,8 @@ import {
   RECORDING_TYPES,
   type RecordingTypeKey,
 } from '../config/recordingTypes';
-import { transcribeAudio } from '../lib/api';
+import { transcribeAudio, QuotaExceededError } from '../lib/api';
+import PaymentModal from '../components/PaymentModal';
 import { getPlanCache } from '../lib/planCache';
 import { PLAN_LIMITS, type Plan } from '../config/plans';
 
@@ -160,6 +161,7 @@ export default function RecordPage() {
   const [aiStep, setAiStep] = useState<AiStep | null>(null);
   const [reminderCount, setReminderCount] = useState(0);
   const [storageWarning, setStorageWarning] = useState(false);
+  const [upgradePlan, setUpgradePlan] = useState<'starter' | 'pro' | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -329,6 +331,13 @@ export default function RecordPage() {
       setReminderCount(result.reminders?.length ?? 0);
       setAiStep('done');
     } catch (err) {
+      if (err instanceof QuotaExceededError) {
+        const next = err.currentPlan === 'free' ? 'starter' : 'pro';
+        setUpgradePlan(next);
+        await updateAudioRecord(lastSavedId, { aiStatus: 'error', aiError: err.message });
+        setAiStep('error');
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'เกิดข้อผิดพลาด';
       await updateAudioRecord(lastSavedId, { aiStatus: 'error', aiError: msg });
       setAiStep('error');
@@ -341,6 +350,7 @@ export default function RecordPage() {
 
   return (
     <div className="min-h-svh flex flex-col items-center bg-[#FAFAF7] dark:bg-[#18181A]">
+      {upgradePlan && <PaymentModal plan={upgradePlan} onClose={() => setUpgradePlan(null)} />}
       {/* Header */}
       <header className="w-full max-w-md lg:max-w-xl px-5 pt-10 pb-4">
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 tracking-tight">

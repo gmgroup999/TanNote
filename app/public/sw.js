@@ -1,8 +1,8 @@
 // TanNote Service Worker — cache-first for static assets, network-first for API
-const CACHE = 'tannote-v1';
+const CACHE = 'tannote-v2';
 
 const PRECACHE = [
-  '/',
+  '/app',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
@@ -32,7 +32,7 @@ self.addEventListener('fetch', (e) => {
   // Network-first for HTML navigation (SPA shell)
   if (e.request.mode === 'navigate') {
     e.respondWith(
-      fetch(e.request).catch(() => caches.match('/'))
+      fetch(e.request).catch(() => caches.match('/app'))
     );
     return;
   }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, Fragment } from 'react';
-import { askNotes, saveMemory, fetchMemories, deleteMemory, saveProfile, type AskSource, type SuggestedMemory, type UserMemory, type ChatHistory, type LocalNoteContext } from '../lib/api';
+import { askNotes, saveMemory, fetchMemories, deleteMemory, saveProfile, QuotaExceededError, type AskSource, type SuggestedMemory, type UserMemory, type ChatHistory, type LocalNoteContext } from '../lib/api';
+import PaymentModal from '../components/PaymentModal';
 import { listAudioRecordings } from '../lib/db';
 
 // ─── types ────────────────────────────────────────────────────────────────────
@@ -280,10 +281,11 @@ function ChatView({ onOpenMemory, onOpenNote, messages, setMessages }: {
   messages: Message[];
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
 }) {
-  const [input, setInput]   = useState('');
+  const [input, setInput]     = useState('');
   const [loading, setLoading] = useState(false);
-  const bottomRef               = useRef<HTMLDivElement>(null);
-  const inputRef                = useRef<HTMLTextAreaElement>(null);
+  const [upgradePlan, setUpgradePlan] = useState<'starter' | 'pro' | null>(null);
+  const bottomRef             = useRef<HTMLDivElement>(null);
+  const inputRef              = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -316,12 +318,18 @@ function ChatView({ onOpenMemory, onOpenNote, messages, setMessages }: {
         suggestedMemory: result.suggested_memory ?? undefined,
       }]);
     } catch (err) {
-      const raw = err instanceof Error ? err.message : 'เกิดข้อผิดพลาด';
-      const is429 = raw.includes('429') || raw.includes('RESOURCE_EXHAUSTED') || raw.includes('quota');
-      const msg = is429
-        ? '⏳ AI ยุ่งมากชั่วคราว (rate limit) กรุณารอ 1 นาทีแล้วลองใหม่'
-        : `⚠️ ${raw}`;
-      setMessages((prev) => [...prev, { role: 'ai', text: msg }]);
+      if (err instanceof QuotaExceededError) {
+        const next = err.currentPlan === 'free' ? 'starter' : 'pro';
+        setUpgradePlan(next);
+        setMessages((prev) => [...prev, { role: 'ai', text: '⚠️ โควต้าการถามครบแล้ว — อัปเกรดเพื่อใช้ต่อ' }]);
+      } else {
+        const raw = err instanceof Error ? err.message : 'เกิดข้อผิดพลาด';
+        const is429 = raw.includes('429') || raw.includes('RESOURCE_EXHAUSTED');
+        const msg = is429
+          ? '⏳ AI ยุ่งมากชั่วคราว (rate limit) กรุณารอ 1 นาทีแล้วลองใหม่'
+          : `⚠️ ${raw}`;
+        setMessages((prev) => [...prev, { role: 'ai', text: msg }]);
+      }
     } finally {
       setLoading(false);
     }
@@ -347,6 +355,7 @@ function ChatView({ onOpenMemory, onOpenNote, messages, setMessages }: {
 
   return (
     <div className="min-h-svh flex flex-col bg-[#FAFAF7] dark:bg-[#18181A]">
+      {upgradePlan && <PaymentModal plan={upgradePlan} onClose={() => setUpgradePlan(null)} />}
       {/* Header */}
       <header className="w-full max-w-md lg:max-w-2xl mx-auto px-5 pt-10 pb-3 flex items-center justify-between">
         <div>

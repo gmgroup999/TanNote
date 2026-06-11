@@ -28,6 +28,15 @@ export interface TranscribeResult {
   reminders:       ReminderItem[];
 }
 
+export class QuotaExceededError extends Error {
+  currentPlan: string;
+  constructor(message: string, currentPlan: string) {
+    super(message);
+    this.name = 'QuotaExceededError';
+    this.currentPlan = currentPlan;
+  }
+}
+
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function getEdgeFunctionUrl(name: string): string {
   const base = SUPABASE_URL?.replace(/\/$/, "");
@@ -102,8 +111,11 @@ export async function transcribeAudio(
     body: form,
   });
 
-  const json = await res.json() as TranscribeResult & { error?: string };
+  const json = await res.json() as TranscribeResult & { error?: string; quota_exceeded?: boolean; plan?: string };
 
+  if (json.quota_exceeded) {
+    throw new QuotaExceededError(json.error ?? 'โควต้าครบแล้ว', json.plan ?? 'free');
+  }
   if (!res.ok || json.error) {
     throw new Error(json.error ?? `Server error ${res.status}`);
   }
@@ -237,7 +249,10 @@ export async function askNotes(question: string, history: ChatHistory[] = [], lo
     },
     body: JSON.stringify({ question, history: history.slice(-6), local_notes: localNotes }),
   });
-  const json = await res.json() as AskResult & { error?: string };
+  const json = await res.json() as AskResult & { error?: string; quota_exceeded?: boolean; plan?: string };
+  if (json.quota_exceeded) {
+    throw new QuotaExceededError(json.error ?? 'โควต้าครบแล้ว', json.plan ?? 'free');
+  }
   if (!res.ok || json.error) throw new Error(json.error ?? `Server error ${res.status}`);
   return { answer: json.answer, sources: json.sources ?? [], suggested_memory: json.suggested_memory ?? null };
 }
