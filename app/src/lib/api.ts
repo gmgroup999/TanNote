@@ -273,9 +273,14 @@ function isSupabaseReady() {
 
 export async function fetchMemories(): Promise<UserMemory[]> {
   if (!isSupabaseReady()) return [];
+  const lineUserId = getLiffUserId();
   const res = await fetch(
-    restUrl("user_memory", "select=id,key,value,source,created_at&order=created_at.desc"),
-    { headers: { apikey: SUPABASE_ANON, "Content-Type": "application/json" } },
+    `${SUPABASE_URL}/rest/v1/rpc/get_user_memories`,
+    {
+      method:  "POST",
+      headers: { apikey: SUPABASE_ANON, "Content-Type": "application/json" },
+      body:    JSON.stringify({ p_line_user_id: lineUserId }),
+    },
   );
   return res.ok ? (await res.json() as UserMemory[]) : [];
 }
@@ -297,9 +302,11 @@ export async function saveMemory(key: string, value: string, source = "confirmed
 
 export async function deleteMemory(id: string): Promise<void> {
   if (!isSupabaseReady()) return;
-  await fetch(restUrl("user_memory", `id=eq.${id}`), {
-    method:  "DELETE",
+  const lineUserId = getLiffUserId();
+  await fetch(`${SUPABASE_URL}/rest/v1/rpc/delete_user_memory`, {
+    method:  "POST",
     headers: { apikey: SUPABASE_ANON, "Content-Type": "application/json" },
+    body:    JSON.stringify({ p_id: id, p_line_user_id: lineUserId }),
   }).catch(() => {});
 }
 
@@ -338,9 +345,11 @@ export async function fetchReminders(): Promise<ReminderItem[]> {
 
 export async function deleteReminder(id: string): Promise<void> {
   if (!isSupabaseReady()) return;
-  await fetch(restUrl("reminders", `id=eq.${id}`), {
-    method:  "DELETE",
+  const lineUserId = getLiffUserId();
+  await fetch(`${SUPABASE_URL}/rest/v1/rpc/delete_user_reminder`, {
+    method:  "POST",
     headers: { apikey: SUPABASE_ANON, "Content-Type": "application/json" },
+    body:    JSON.stringify({ p_id: id, p_line_user_id: lineUserId }),
   }).catch(() => {});
 }
 

@@ -151,7 +151,7 @@ Deno.serve(async (req: Request) => {
     const period       = currentPeriod();
     const recLimit     = PLAN_LIMITS[userPlan]?.recording_minutes ?? PLAN_LIMITS.free.recording_minutes;
     const suggestLimit = PLAN_LIMITS[userPlan]?.ai_suggest        ?? PLAN_LIMITS.free.ai_suggest;
-    if (userId && !lineUserId.startsWith("dev_")) {
+    if (userId) {
       const { data: usageRow } = await supabase
         .from("usage_tracking")
         .select("recording_minutes, ai_suggest_count")

@@ -91,7 +91,7 @@ Deno.serve(async (req: Request) => {
     // ── 2b. Check ask-notes quota ────────────────────────────────────────────
     const period   = currentPeriod();
     const askLimit = PLAN_LIMITS[userPlan]?.ask_notes ?? PLAN_LIMITS.free.ask_notes;
-    if (userId && askLimit !== null && !lineUserId.startsWith("dev_")) {
+    if (userId && askLimit !== null) {
       const { data: usageRow } = await supabase
         .from("usage_tracking")
         .select("ask_notes_count")
