@@ -214,6 +214,27 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 
 ## สิ่งที่ทำวันนี้ (2026-06-11)
 
+### Security Hardening — เสร็จแล้ว (session นี้)
+| งาน | ผล |
+|---|---|
+| ลบ `dev_` quota bypass | `transcribe` + `ask` — `dev_xxx` ID ถูกนับ quota แล้ว ✅ |
+| `fetchMemories` data leak | ใช้ RPC `get_user_memories(p_line_user_id)` — คืนเฉพาะของตัวเอง ✅ |
+| `deleteMemory` / `deleteReminder` ownership | RPCs `delete_user_memory` + `delete_user_reminder` ตรวจ line_user_id ✅ |
+| users_profile anon policy | เพิ่ม anon read + update (safe fields only) — onboarding ทำงานได้แล้ว ✅ |
+| **LIFF JWT verification** | `_shared/liff-verify.ts` ใช้ LINE JWKS (RS256) — transcribe, ask, save-memory, patch-note ✅ |
+| patch-note ownership check | ตรวจว่า note เป็นของ user ก่อน allow update ✅ |
+| Email users session JWT | `liveAuthHeaders()` ใช้ Supabase session JWT แทน anon key ✅ |
+| Secrets | `LINE_CHANNEL_ID=2010157477` set ใน Supabase ✅ |
+
+### Z-Node Deploy — สำเร็จ
+| Commit | เนื้อหา |
+|---|---|
+| `5ace35b` | Rich Menu PNG fix |
+| `053e607` | Quota→PaymentModal, Landing as root, LIFF/PWA |
+| `436db83` | Security fix: quota bypass, memory/reminder ownership |
+| `4effad7` | LIFF JWT verification: transcribe + ask |
+| `9753911` | LIFF JWT + ownership: save-memory + patch-note + liveAuthHeaders |
+
 ### LINE_CHANNEL_SECRET fix
 | งาน | ผล |
 |---|---|
@@ -561,26 +582,15 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 
 ## TODO ถัดไป
 
-### 🟡 ทดสอบ Payment Notification flow (ต้องการ device จริง)
-1. ส่งข้อความใน LINE @tannote → bot ต้องตอบ "รับทราบ รอ 24 ชม."
-2. ตรวจว่า: admin (Jack) ได้รับ push แจ้งเตือนใน LINE ส่วนตัว
-3. ส่งรูปสลิปจำลอง → bot ตอบ + admin ได้รับ "📷 ส่งรูปมา"
+### 🟡 ทดสอบบน device จริง (ต้องทำ)
+| flow | ขั้นตอน |
+|---|---|
+| Payment Notification | ส่งข้อความ/รูปสลิปใน LINE @077vkaxj → bot ตอบ + admin (Jack) ได้รับ push |
+| Plan Enforcement | Suspend user → อัดเสียง → 403 / Free user quota ครบ → 402 |
+| LINE Reminder | บันทึก "📅 นัดหมาย" → รอ 1 นาที → Flex Message มา → กดปุ่มได้ |
 
-### 🟡 ทดสอบ Plan Enforcement (ต้องการ device จริง)
-1. Suspend user ผ่าน Admin Panel → ลองอัดเสียง → ต้องได้ 403
-2. Free user อัด 5 ครั้ง → ครั้งที่ 6 ต้องได้ 402 quota_exceeded
-3. ตั้ง plan_expires_at = เมื่อวาน → อัดเสียง → ต้องใช้ limit ของ free
-
-### 🟡 ทดสอบ LINE Reminder end-to-end (ต้องการ device จริง)
-1. เปิดแอปผ่าน LINE (LIFF) — LIFF user ID จะถูก set อัตโนมัติ
-2. บันทึกโน้ต ประเภท "📅 นัดหมาย" พูดระบุวันเวลาชัดเจน
-3. รอ pg_cron 1 นาที → ดู LINE message (Flex: เสร็จแล้ว / เลื่อน 1 ชม.)
-4. กดปุ่ม postback → verify status = "done" ใน reminders table
-
-### 🟢 LINE Rich Menu (optional)
-- `scripts/setup-rich-menu.mjs` พร้อมแล้ว
-- รัน: `node scripts/setup-rich-menu.mjs <LINE_CHANNEL_ACCESS_TOKEN>`
-- สร้าง 2-button menu ล่าง chat: [🎙️ บันทึกเสียง] [📋 รายการบันทึก]
+### 🟢 LINE Rich Menu (เสร็จแล้ว)
+- `richmenu-b4523add3304db39d6e14a9a6c396b3a` set เป็น default แล้ว ✅
 
 ### รูปโปรไฟล์ใน Admin Panel
 รูปจะแสดงหลังจาก user บันทึกเสียงอย่างน้อย 1 ครั้งหลัง deploy ใหม่ — ยังไม่มีทางดึง picture_url ของ user เก่าโดยไม่มี action ใหม่
