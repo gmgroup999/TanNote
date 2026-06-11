@@ -178,8 +178,8 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 | `app/src/pages/AdminPage.tsx` | Admin dashboard: stats, user list + profile pic/email/primary_use/tone/dates, plan/suspend/delete |
 | `app/src/components/UsageIndicator.tsx` | Progress bars สำหรับ quota ปัจจุบัน |
 | `app/src/lib/db.ts` | IndexedDB helpers + `AudioRecord` interface |
-| `app/src/lib/api.ts` | Frontend → Edge Function client (ส่ง x-line-picture-url/display-name headers) |
-| `app/src/lib/liff.ts` | LIFF init + userId/pictureUrl/displayName → localStorage |
+| `app/src/lib/api.ts` | Frontend → Edge Function client; `liveAuthHeaders()` + `liffTokenHeader()`; fetchMemories/delete RPCs |
+| `app/src/lib/liff.ts` | LIFF init + userId/pictureUrl/displayName → localStorage + `getLiffIDToken()` |
 | `app/src/lib/auth.ts` | Supabase Auth client + `sendMagicLink`, `isAdminEmail`, `isLiffAuthed` |
 | `app/src/config/recordingTypes.ts` | **9** ประเภทการบันทึก (รวม appointment) + label + description + summaryFocus |
 | `app/src/config/plans.ts` | Plan limits + PLAN_INFO + quota helpers |
@@ -190,6 +190,7 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 | `supabase/functions/line-webhook/index.ts` | Edge Function — รับ LINE postback (done/snooze) |
 | `supabase/functions/admin-api/index.ts` | Edge Function — admin CRUD (JWT verify + ADMIN_EMAILS secret) |
 | `supabase/functions/_shared/plans.ts` | Plan limits shared logic |
+| `supabase/functions/_shared/liff-verify.ts` | LINE JWKS (RS256) JWT verification — used by transcribe/ask/save-memory/patch-note |
 | `supabase/migrations/20260520000000_init.sql` | Full DB schema + RLS |
 | `supabase/migrations/20260521000006_auth_admin.sql` | is_suspended column + admin_list_users RPC |
 | `supabase/migrations/20260525000001_add_picture_url.sql` | picture_url column + admin_list_users RPC v4 |
@@ -201,39 +202,48 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 - **Project ref**: `czczwtjgmjnboeeibxcd`
 - **URL**: `https://czczwtjgmjnboeeibxcd.supabase.co`
 - **Production URL**: `https://tannote.z-node.cc` (deployed บน Z-Node/Coolify)
-- **Secrets set**: `GEMINI_API_KEY`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET` ✅ (อัปเดต 2026-06-11), `ADMIN_EMAILS`, `NODE_ID`, `ADMIN_LINE_USER_ID=U8414fbb78490e5c27a1b52ee7dc4593b` ✅
-- **Functions deployed**: `transcribe`, `ask`, `send-reminders`, `line-webhook`, `save-memory`, `admin-api`, `patch-note`, `r2-backup` ✅ (line-webhook redeployed 2026-06-11 — LINE_CHANNEL_SECRET fix)
+- **Secrets set**: `GEMINI_API_KEY`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET` ✅ (อัปเดต 2026-06-11), `LINE_CHANNEL_ID=2010157477` ✅ (เพิ่ม 2026-06-11), `ADMIN_EMAILS`, `NODE_ID`, `ADMIN_LINE_USER_ID=U8414fbb78490e5c27a1b52ee7dc4593b` ✅
+- **Functions deployed**: `transcribe`, `ask`, `send-reminders`, `line-webhook`, `save-memory`, `admin-api`, `patch-note`, `r2-backup` ✅ (redeployed 2026-06-11 — LIFF JWT + security hardening; save-memory + patch-note รอ deploy รอบถัดไป)
 - **Extensions enabled**: `pg_cron`, `pg_net`, `pgvector`
 - **pg_cron job**: schedule id 1 — ทุก 1 นาที → `send-reminders`; schedule `enforce-plan-expiry` — ทุกชั่วโมง → downgrade Starter ที่หมดอายุ
 - **LINE Webhook URL**: `https://czczwtjgmjnboeeibxcd.supabase.co/functions/v1/line-webhook` ✅ (active)
 - **LINE bot**: `@077vkaxj` = `@tannote` (บัญชีเดียวกัน) — Admin LINE User ID: `U8414fbb78490e5c27a1b52ee7dc4593b`
+- **LINE Rich Menu**: `richmenu-b4523add3304db39d6e14a9a6c396b3a` — set เป็น default ✅ (2026-06-11)
+- **LIFF**: Published ✅ (2026-06-11) — endpoint URL: `https://tannote.z-node.cc/app`
 - **SMTP**: Resend — smtp.resend.com:465, sender: `onboarding@resend.dev`
-- **Migrations applied**: ทั้งหมดถึง `20260526000001_fix_increment_ask_security.sql` ✅
+- **Migrations applied**: ทั้งหมดถึง `20260611000001_tighten_rls.sql` ✅
 
 ---
 
 ## สิ่งที่ทำวันนี้ (2026-06-11)
 
-### Security Hardening — เสร็จแล้ว (session นี้)
+### LINE Bot Setup
 | งาน | ผล |
 |---|---|
-| ลบ `dev_` quota bypass | `transcribe` + `ask` — `dev_xxx` ID ถูกนับ quota แล้ว ✅ |
-| `fetchMemories` data leak | ใช้ RPC `get_user_memories(p_line_user_id)` — คืนเฉพาะของตัวเอง ✅ |
-| `deleteMemory` / `deleteReminder` ownership | RPCs `delete_user_memory` + `delete_user_reminder` ตรวจ line_user_id ✅ |
-| users_profile anon policy | เพิ่ม anon read + update (safe fields only) — onboarding ทำงานได้แล้ว ✅ |
-| **LIFF JWT verification** | `_shared/liff-verify.ts` ใช้ LINE JWKS (RS256) — transcribe, ask, save-memory, patch-note ✅ |
-| patch-note ownership check | ตรวจว่า note เป็นของ user ก่อน allow update ✅ |
-| Email users session JWT | `liveAuthHeaders()` ใช้ Supabase session JWT แทน anon key ✅ |
-| Secrets | `LINE_CHANNEL_ID=2010157477` set ใน Supabase ✅ |
+| Publish LIFF channel | LINE Developer Console → Publish → ผู้ใช้ใหม่เข้าแอปได้แล้ว ✅ |
+| LIFF endpoint URL | เปลี่ยนจาก `/` → `/app` (SPA mount point) ✅ |
+| LINE Rich Menu deploy | `scripts/setup-rich-menu.mjs` → `richmenu-b4523add3304db39d6e14a9a6c396b3a` set เป็น default ✅ |
 
-### Z-Node Deploy — สำเร็จ
-| Commit | เนื้อหา |
+### UX — Quota → PaymentModal
+| งาน | ผล |
 |---|---|
-| `5ace35b` | Rich Menu PNG fix |
-| `053e607` | Quota→PaymentModal, Landing as root, LIFF/PWA |
-| `436db83` | Security fix: quota bypass, memory/reminder ownership |
-| `4effad7` | LIFF JWT verification: transcribe + ask |
-| `9753911` | LIFF JWT + ownership: save-memory + patch-note + liveAuthHeaders |
+| `RecordPage.tsx` | quota exceeded (402) → เปิด `PaymentModal` แทน alert ✅ |
+| `AskPage.tsx` | quota exceeded (402) → เปิด `PaymentModal` แทน alert ✅ |
+| `api.ts` | ส่ง error code กลับมาเป็น `QuotaExceededError` class ✅ |
+
+### Landing Page เป็นหน้าแรก (`nginx.conf`)
+| งาน | ผล |
+|---|---|
+| `location = /` | เพิ่ม `index off;` + `try_files /landing.html =404;` ✅ |
+| SPA ย้ายไป `/app` | `location /app` → `try_files $uri /index.html` ✅ |
+| Port 3010 | `nginx.conf` + `Dockerfile` เปลี่ยนจาก 80 → 3010 (Z-Node port) ✅ |
+| **หมายเหตุ** | Z-Node generate nginx config ของตัวเอง → ไฟล์ `nginx.conf` ของเราไม่ถูกใช้; landing accessible ที่ `/landing.html` เท่านั้น |
+
+### PWA Path Updates
+| ไฟล์ | สิ่งที่เปลี่ยน |
+|---|---|
+| `app/public/manifest.json` | `start_url: "/app"` (เดิม `/`) |
+| `app/public/sw.js` | cache v2, cache key ครอบ `/app` |
 
 ### LINE_CHANNEL_SECRET fix
 | งาน | ผล |
@@ -252,16 +262,60 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 | Nav link "#compare" | เพิ่มลิงก์ nav |
 | Pricing → 3 แพลน | ตัด Extra ออก (admin-only, ตรงกับ app) |
 
+### Security Hardening — เสร็จแล้ว
+| งาน | ผล |
+|---|---|
+| ลบ `dev_` quota bypass | `transcribe` + `ask` — `dev_xxx` ID ถูกนับ quota แล้ว ✅ |
+| `fetchMemories` data leak | ใช้ RPC `get_user_memories(p_line_user_id)` — คืนเฉพาะของตัวเอง ✅ |
+| `deleteMemory` / `deleteReminder` ownership | RPCs `delete_user_memory` + `delete_user_reminder` ตรวจ line_user_id ✅ |
+| `users_profile` anon policy | เพิ่ม anon read + update (safe fields only) — onboarding ทำงานได้ + ห้าม tamper plan ✅ |
+| **LIFF JWT verification** | `_shared/liff-verify.ts` — LINE JWKS (RS256), iss/aud check; transcribe, ask, save-memory, patch-note ✅ |
+| `patch-note` ownership check | ตรวจว่า note เป็นของ user ก่อน allow update ✅ |
+| Email users session JWT | `liveAuthHeaders()` ใช้ Supabase session JWT; LIFF users ใช้ anon key + `x-liff-token` ✅ |
+| Secrets | `LINE_CHANNEL_ID=2010157477` set ใน Supabase ✅ |
+| Migration `20260611000001` | RLS RPCs + users_profile policies applied ✅ |
+
 ### LINE Reminder verification
 | งาน | ผล |
 |---|---|
 | trigger `send-reminders` manually | `{"sent":0,"skipped":0}` — function ทำงานได้ ✅ |
 | Plan enforcement code review | ทั้ง `transcribe` + `ask` มี is_suspended, plan_expires_at, quota checks ✅ |
 
-### Scripts
-| ไฟล์ | บทบาท |
+### Z-Node Deploy — สำเร็จ
+| Commit | เนื้อหา | Deploy |
+|---|---|---|
+| `5f185d3` | LINE_CHANNEL_SECRET fix + landing page (Pain Points/FAQ/Compare) | ✅ |
+| `5ace35b` | Rich Menu PNG compression fix | ✅ |
+| `053e607` | Quota→PaymentModal, LIFF/PWA path updates, nginx landing | ✅ |
+| `cfb2e46` | Port 3010 (Dockerfile + nginx.conf) | ✅ |
+| `a2d7704` | nginx `index off` for landing.html at root | ✅ |
+| `436db83` | Security: quota bypass, memory data leak, delete ownership, RLS migration | ✅ |
+| `4effad7` | LIFF JWT verification: transcribe + ask | ✅ |
+| `9753911` | LIFF JWT + ownership: save-memory + patch-note + liveAuthHeaders | ✅ (รอ deploy) |
+| `b6a523e` | CLAUDE.md update | ✅ |
+
+---
+
+## ไฟล์ที่แก้ไขวันนี้ (2026-06-11)
+
+| ไฟล์ | สิ่งที่เปลี่ยน |
 |---|---|
-| `scripts/setup-rich-menu.mjs` | สร้าง LINE Rich Menu 2 ปุ่ม: บันทึกเสียง + รายการบันทึก (optional) |
+| `app/public/landing.html` | + Pain Points section, Comparison Table, FAQ Accordion, pricing 3 แพลน |
+| `app/public/manifest.json` | `start_url` → `/app` |
+| `app/public/sw.js` | cache v2, path `/app` |
+| `app/src/lib/liff.ts` | + `getLiffIDToken()` export สำหรับ server-side verification |
+| `app/src/lib/api.ts` | + `QuotaExceededError` class; `liveAuthHeaders()` async; `liffTokenHeader()`; `fetchMemories` → RPC; `deleteMemory/Reminder` → RPCs; ทุก API call ใช้ liveAuthHeaders + liffTokenHeader |
+| `app/src/pages/RecordPage.tsx` | quota 402 → เปิด `PaymentModal` |
+| `app/src/pages/AskPage.tsx` | quota 402 → เปิด `PaymentModal` |
+| `nginx.conf` | `location = /` → `index off` + landing.html; `location /app` → SPA; `listen 3010` |
+| `Dockerfile` | `EXPOSE 3010` |
+| `scripts/setup-rich-menu.mjs` | **ไฟล์ใหม่** — create + deploy LINE Rich Menu 2 ปุ่ม |
+| `supabase/functions/_shared/liff-verify.ts` | **ไฟล์ใหม่** — LINE JWKS RS256 verification via `jose` |
+| `supabase/functions/transcribe/index.ts` | + LIFF JWT verify; ลบ `dev_` bypass; + `x-liff-token` CORS header |
+| `supabase/functions/ask/index.ts` | + LIFF JWT verify; ลบ `dev_` bypass |
+| `supabase/functions/save-memory/index.ts` | + LIFF JWT verify |
+| `supabase/functions/patch-note/index.ts` | + LIFF JWT verify + note ownership check |
+| `supabase/migrations/20260611000001_tighten_rls.sql` | **ไฟล์ใหม่** — RPCs: `get_user_memories`, `delete_user_memory`, `delete_user_reminder`; policies: anon read/update safe fields บน `users_profile` |
 
 ---
 
@@ -582,15 +636,22 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 
 ## TODO ถัดไป
 
+### 🔴 Redeploy Edge Functions (save-memory + patch-note)
+- commit `9753911` เพิ่ม LIFF JWT verify + ownership ใน `save-memory` และ `patch-note`
+- ยังไม่ได้ deploy ไป Supabase: `npx supabase functions deploy save-memory --no-verify-jwt && npx supabase functions deploy patch-note --no-verify-jwt`
+
 ### 🟡 ทดสอบบน device จริง (ต้องทำ)
 | flow | ขั้นตอน |
 |---|---|
+| LIFF JWT end-to-end | เปิดแอปผ่าน LINE → บันทึกเสียง → verify ไม่มี 401 ในหน้า transcribe |
 | Payment Notification | ส่งข้อความ/รูปสลิปใน LINE @077vkaxj → bot ตอบ + admin (Jack) ได้รับ push |
-| Plan Enforcement | Suspend user → อัดเสียง → 403 / Free user quota ครบ → 402 |
+| Plan Enforcement | Suspend user → อัดเสียง → 403 / Free user quota ครบ → 402 → PaymentModal |
 | LINE Reminder | บันทึก "📅 นัดหมาย" → รอ 1 นาที → Flex Message มา → กดปุ่มได้ |
 
-### 🟢 LINE Rich Menu (เสร็จแล้ว)
-- `richmenu-b4523add3304db39d6e14a9a6c396b3a` set เป็น default แล้ว ✅
+### 🟢 สิ่งที่เสร็จแล้ว (ไม่ต้องทำอีก)
+- LINE Rich Menu: `richmenu-b4523add3304db39d6e14a9a6c396b3a` set เป็น default ✅
+- LIFF Published ✅
+- Security hardening ทั้งหมด ✅
 
 ### รูปโปรไฟล์ใน Admin Panel
 รูปจะแสดงหลังจาก user บันทึกเสียงอย่างน้อย 1 ครั้งหลัง deploy ใหม่ — ยังไม่มีทางดึง picture_url ของ user เก่าโดยไม่มี action ใหม่
@@ -601,6 +662,8 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 
 | ปัญหา | รายละเอียด | วิธีแก้ |
 |---|---|---|
+| Landing page ไม่ได้อยู่ที่ `/` ใน production | Z-Node/Coolify generate nginx ของตัวเอง — ไม่ใช้ `nginx.conf` ของ project; landing อยู่ที่ `/landing.html` | Serve React SPA ที่ `/` ต่อไป (ผู้ใช้เข้าผ่าน LINE LIFF ไม่ใช่ direct URL); หรือ integrate `landing.html` เข้า React Router เป็น route `/` |
 | รูปโปรไฟล์ user เก่าไม่มี | picture_url ว่างใน DB สำหรับ user ที่ยังไม่ได้บันทึกใหม่หลัง deploy | รอ user บันทึกเสียงครั้งใหม่ (transcribe upsert อัตโนมัติ) |
 | ไมโครโฟน ถามทุก session | Android WebView ไม่ persist mic permission ข้าม session — OS limitation | แก้ไม่ได้ใน code; user กด "อนุญาตเฉพาะครั้งนี้" ทุกครั้งที่เปิด LINE ใหม่ |
 | ระบบชำระเงิน auto-verify ยังไม่มี | ปัจจุบัน manual verify ผ่าน LINE + admin panel; auto-webhook เป็น optional อนาคต | integrate payment webhook ถ้าต้องการ scale |
+| LIFF token เป็น `null` นอก LINE client | `liff.getIDToken()` คืน null เมื่อเปิดในเบราว์เซอร์ปกติ — fallback ไปใช้ `x-line-user-id` จาก localStorage | ยอมรับ: browser testing ใช้ `dev_xxx` fallback; production ใช้ผ่าน LINE เท่านั้น |
