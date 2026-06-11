@@ -7,14 +7,16 @@
  */
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { verifyLiffToken } from "../_shared/liff-verify.ts";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SVC = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const NODE_ID      = Deno.env.get("NODE_ID") ?? "00000000-0000-0000-0000-000000000001";
+const SUPABASE_URL    = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SVC    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const NODE_ID         = Deno.env.get("NODE_ID") ?? "00000000-0000-0000-0000-000000000001";
+const LINE_CHANNEL_ID = Deno.env.get("LINE_CHANNEL_ID") ?? "";
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-line-user-id",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-line-user-id, x-liff-token",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -30,11 +32,19 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return respond({ error: "Method not allowed" }, 405);
 
   try {
-    const body       = await req.json() as { key?: string; value?: string; source?: string };
-    const key        = (body.key   ?? "").trim();
-    const value      = (body.value ?? "").trim();
-    const source     = body.source ?? "confirmed";
-    const lineUserId = req.headers.get("x-line-user-id") ?? "anonymous";
+    const body     = await req.json() as { key?: string; value?: string; source?: string };
+    const key      = (body.key   ?? "").trim();
+    const value    = (body.value ?? "").trim();
+    const source   = body.source ?? "confirmed";
+
+    const liffToken  = req.headers.get("x-liff-token");
+    let   lineUserId = req.headers.get("x-line-user-id") ?? "anonymous";
+
+    if (liffToken) {
+      const verified = await verifyLiffToken(liffToken, LINE_CHANNEL_ID);
+      if (!verified) return respond({ error: "LIFF token ไม่ถูกต้องหรือหมดอายุ" }, 401);
+      lineUserId = verified;
+    }
 
     if (!key || !value) return respond({ error: "key และ value ต้องไม่ว่าง" }, 400);
 

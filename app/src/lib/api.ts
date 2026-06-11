@@ -169,8 +169,9 @@ export async function uploadR2Backup(blob: Blob, noteId: string): Promise<string
     const res = await fetch(getEdgeFunctionUrl("r2-backup"), {
       method:  "POST",
       headers: {
-        ...authHeaders(),
+        ...await liveAuthHeaders(),
         "x-line-user-id": getLiffUserId(),
+        ...liffTokenHeader(),
       },
       body: form,
     });
@@ -188,8 +189,10 @@ export async function patchNote(
   await fetch(getEdgeFunctionUrl("patch-note"), {
     method:  "PATCH",
     headers: {
-      ...authHeaders(),
-      "Content-Type": "application/json",
+      ...await liveAuthHeaders(),
+      "Content-Type":   "application/json",
+      "x-line-user-id": getLiffUserId(),
+      ...liffTokenHeader(),
     },
     body: JSON.stringify({ note_id: noteId, ...patch }),
   }).catch(() => {});
@@ -307,14 +310,13 @@ export async function fetchMemories(): Promise<UserMemory[]> {
 
 export async function saveMemory(key: string, value: string, source = "confirmed"): Promise<void> {
   if (!isSupabaseReady()) return;
-  // Get userId from cached session storage line_user_id
-  const lineUserId = getLiffUserId();
   await fetch(getEdgeFunctionUrl("save-memory"), {
     method:  "POST",
     headers: {
-      ...authHeaders(),
+      ...await liveAuthHeaders(),
       "Content-Type":   "application/json",
-      "x-line-user-id": lineUserId,
+      "x-line-user-id": getLiffUserId(),
+      ...liffTokenHeader(),
     },
     body: JSON.stringify({ key, value, source }),
   }).catch(() => {});

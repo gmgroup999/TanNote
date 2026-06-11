@@ -8,13 +8,15 @@
  */
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { verifyLiffToken } from "../_shared/liff-verify.ts";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SVC = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const SUPABASE_URL    = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SVC    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const LINE_CHANNEL_ID = Deno.env.get("LINE_CHANNEL_ID") ?? "";
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-line-user-id",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-line-user-id, x-liff-token",
   "Access-Control-Allow-Methods": "PATCH, OPTIONS",
 };
 
@@ -30,6 +32,15 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "PATCH") return respond({ error: "Method not allowed" }, 405);
 
   try {
+    const liffToken  = req.headers.get("x-liff-token");
+    let   lineUserId = req.headers.get("x-line-user-id") ?? "anonymous";
+
+    if (liffToken) {
+      const verified = await verifyLiffToken(liffToken, LINE_CHANNEL_ID);
+      if (!verified) return respond({ error: "LIFF token ไม่ถูกต้องหรือหมดอายุ" }, 401);
+      lineUserId = verified;
+    }
+
     const { note_id, title, recording_type, remove_tags } = await req.json() as {
       note_id: string;
       title?: string;
@@ -40,6 +51,24 @@ Deno.serve(async (req: Request) => {
     if (!note_id) return respond({ error: "note_id required" }, 400);
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SVC);
+
+    // Verify ownership — note must belong to the requesting user
+    const { data: noteOwner } = await supabase
+      .from("notes")
+      .select("user_id")
+      .eq("id", note_id)
+      .maybeSingle();
+
+    if (noteOwner) {
+      const { data: userRow } = await supabase
+        .from("users_profile")
+        .select("id")
+        .eq("line_user_id", lineUserId)
+        .maybeSingle();
+      if (!userRow || noteOwner.user_id !== userRow.id) {
+        return respond({ error: "ไม่มีสิทธิ์แก้ไขบันทึกนี้" }, 403);
+      }
+    }
 
     // Update note fields
     const noteUpdate: Record<string, string> = {};
