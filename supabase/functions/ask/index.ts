@@ -14,17 +14,19 @@
 import { GoogleGenAI } from "npm:@google/genai";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { PLAN_LIMITS, currentPeriod, quotaExceededResponse } from "../_shared/plans.ts";
+import { verifyLiffToken } from "../_shared/liff-verify.ts";
 
 // ─── Env ──────────────────────────────────────────────────────────────────────
-const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!;
-const SUPABASE_URL   = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SVC   = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const NODE_ID        = Deno.env.get("NODE_ID") ?? "00000000-0000-0000-0000-000000000001";
+const GEMINI_API_KEY  = Deno.env.get("GEMINI_API_KEY")!;
+const SUPABASE_URL    = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SVC    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const NODE_ID         = Deno.env.get("NODE_ID") ?? "00000000-0000-0000-0000-000000000001";
+const LINE_CHANNEL_ID = Deno.env.get("LINE_CHANNEL_ID") ?? "";
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin":  "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-line-user-id",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-line-user-id, x-liff-token",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -61,7 +63,15 @@ Deno.serve(async (req: Request) => {
     const question   = (body.question ?? "").trim();
     const history    = body.history ?? [];
     const localNotes = body.local_notes ?? [];
-    const lineUserId = req.headers.get("x-line-user-id") ?? "anonymous";
+    const liffToken  = req.headers.get("x-liff-token");
+    let   lineUserId = req.headers.get("x-line-user-id") ?? "anonymous";
+
+    // LIFF JWT verification — if token present, must be valid
+    if (liffToken) {
+      const verified = await verifyLiffToken(liffToken, LINE_CHANNEL_ID);
+      if (!verified) return respond({ error: "LIFF token ไม่ถูกต้องหรือหมดอายุ กรุณาเปิดแอปใหม่" }, 401);
+      lineUserId = verified;
+    }
 
     if (!question) return respond({ error: "ไม่มีคำถาม" }, 400);
 

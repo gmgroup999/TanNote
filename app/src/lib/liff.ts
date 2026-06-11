@@ -98,4 +98,14 @@ export function getLiffDisplayName(): string | null {
   return localStorage.getItem(LINE_NAME_KEY);
 }
 
+/** Get the current LIFF ID token for server-side verification. Returns null outside LIFF. */
+export function getLiffIDToken(): string | null {
+  if (!LIFF_ENABLED) return null;
+  try {
+    return liff.getIDToken();
+  } catch {
+    return null;
+  }
+}
+
 export { LIFF_ENABLED };

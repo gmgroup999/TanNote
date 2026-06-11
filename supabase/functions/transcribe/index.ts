@@ -21,19 +21,21 @@
 import { GoogleGenAI } from "npm:@google/genai";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { PLAN_LIMITS, SUPPORTED_LANGUAGES, currentPeriod, quotaExceededResponse } from "../_shared/plans.ts";
+import { verifyLiffToken } from "../_shared/liff-verify.ts";
 
 // ─── Env ─────────────────────────────────────────────────────────────────────
 const GEMINI_API_KEY  = Deno.env.get("GEMINI_API_KEY")!;
 const SUPABASE_URL    = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SVC    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const NODE_ID         = Deno.env.get("NODE_ID") ?? "00000000-0000-0000-0000-000000000001";
+const LINE_CHANNEL_ID = Deno.env.get("LINE_CHANNEL_ID") ?? "";
 
 const MAX_INLINE_BYTES = 20 * 1024 * 1024; // 20 MB → above this use Files API
 
 // ─── CORS ────────────────────────────────────────────────────────────────────
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin":  "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-line-user-id, x-line-picture-url, x-line-display-name",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-line-user-id, x-liff-token, x-line-picture-url, x-line-display-name",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -115,9 +117,17 @@ Deno.serve(async (req: Request) => {
     const durationSec = Number(formData.get("duration_seconds") ?? 0);
     const localId     = (formData.get("local_audio_id") as string | null) ?? "";
     const language    = (formData.get("language") as string | null) ?? "th";
-    const lineUserId   = req.headers.get("x-line-user-id")   ?? "anonymous";
+    const liffToken    = req.headers.get("x-liff-token");
+    let   lineUserId   = req.headers.get("x-line-user-id") ?? "anonymous";
     const pictureUrl   = req.headers.get("x-line-picture-url")  ?? null;
     const displayName  = req.headers.get("x-line-display-name") ?? null;
+
+    // LIFF JWT verification — if token present, must be valid
+    if (liffToken) {
+      const verified = await verifyLiffToken(liffToken, LINE_CHANNEL_ID);
+      if (!verified) return respond({ error: "LIFF token ไม่ถูกต้องหรือหมดอายุ กรุณาเปิดแอปใหม่" }, 401);
+      lineUserId = verified;
+    }
 
     if (!audioFile || audioFile.size === 0) {
       return respond({ error: "ไม่พบไฟล์เสียง หรือไฟล์ว่างเปล่า" }, 400);

@@ -3,7 +3,8 @@
  * Gemini API key ไม่ถูกเปิดเผยใน frontend เลย
  */
 import type { AudioRecord, StructuredTag, SuggestedLink, ReminderItem } from './db';
-import { getLiffUserId, getLiffPictureUrl, getLiffDisplayName, setLineUserId } from './liff';
+import { getLiffUserId, getLiffPictureUrl, getLiffDisplayName, getLiffIDToken, setLineUserId } from './liff';
+import { supabaseClient } from './auth';
 
 const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -58,6 +59,23 @@ function authHeaders(): Record<string, string> {
   };
 }
 
+/** Auth headers using the active Supabase session JWT (email users) or anon key (LIFF users). */
+async function liveAuthHeaders(): Promise<Record<string, string>> {
+  try {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (session?.access_token) {
+      return { apikey: SUPABASE_ANON, Authorization: `Bearer ${session.access_token}` };
+    }
+  } catch { /* ignore */ }
+  return authHeaders();
+}
+
+/** Append x-liff-token header when available (for server-side JWT verification). */
+function liffTokenHeader(): Record<string, string> {
+  const token = getLiffIDToken();
+  return token ? { "x-liff-token": token } : {};
+}
+
 function restUrl(table: string, query = "") {
   const base = SUPABASE_URL?.replace(/\/$/, "");
   return `${base}/rest/v1/${table}${query ? `?${query}` : ""}`;
@@ -104,8 +122,9 @@ export async function transcribeAudio(
   const res = await fetch(url, {
     method:  "POST",
     headers: {
-      ...authHeaders(),
+      ...await liveAuthHeaders(),
       "x-line-user-id": getLiffUserId(),
+      ...liffTokenHeader(),
       ...extraHeaders,
     },
     body: form,
@@ -243,9 +262,10 @@ export async function askNotes(question: string, history: ChatHistory[] = [], lo
   const res = await fetch(url, {
     method:  "POST",
     headers: {
-      ...authHeaders(),
-      "Content-Type":  "application/json",
+      ...await liveAuthHeaders(),
+      "Content-Type":   "application/json",
       "x-line-user-id": getLiffUserId(),
+      ...liffTokenHeader(),
     },
     body: JSON.stringify({ question, history: history.slice(-6), local_notes: localNotes }),
   });
