@@ -31,6 +31,17 @@ export const PLAN_INFO: Record<Plan, {
 export const EARLY_BIRD_TOTAL = 100;
 export const EARLY_BIRD_TAKEN = 0;
 
+/**
+ * Quota window of a plan, for UI labels:
+ *   free → per month ("/ด."), starter → per year ("/ปี"),
+ *   pro/extra → lifetime cap ("ตลอดชีพ").
+ */
+export function quotaPeriodLabel(plan: Plan): { suffix: string; lifetime: boolean } {
+  if (plan === 'starter')               return { suffix: '/ปี',  lifetime: false };
+  if (plan === 'pro' || plan === 'extra') return { suffix: '',     lifetime: true  };
+  return { suffix: '/ด.', lifetime: false };
+}
+
 /** Returns usage color class based on percentage used */
 export function usageColor(used: number, limit: number | null): string {
   if (limit === null) return 'bg-green-500';

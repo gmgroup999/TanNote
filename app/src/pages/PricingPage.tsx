@@ -6,8 +6,12 @@ const PLANS: Plan[] = ['free', 'starter', 'pro'];
 const EARLY_BIRD_LEFT = EARLY_BIRD_TOTAL - EARLY_BIRD_TAKEN;
 const EARLY_BIRD_ACTIVE = EARLY_BIRD_LEFT > 0;
 
-function formatLimit(val: number | null, unit: string): string {
-  return val === null ? `∞ ${unit}` : `${val.toLocaleString()} ${unit}`;
+function formatLimit(val: number | null, unitBase: string, plan: Plan): string {
+  if (val === null) return `∞ ${unitBase}`;
+  const n = val.toLocaleString();
+  if (plan === 'pro' || plan === 'extra') return `${n} ${unitBase} ตลอดชีพ`;
+  if (plan === 'starter')                 return `${n} ${unitBase}/ปี`;
+  return `${n} ${unitBase}/ด.`;
 }
 
 function CheckRow({ label, available = true }: { label: string; available?: boolean }) {
@@ -109,7 +113,7 @@ export default function PricingPage({ onBack }: { onBack: () => void }) {
                   <div>
                     <p className="text-[10px] text-gray-400 dark:text-gray-600 uppercase tracking-wide">บันทึกเสียง</p>
                     <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                      {formatLimit(limits.recording_minutes, 'น./ด.')}
+                      {formatLimit(limits.recording_minutes, 'น.', plan)}
                     </p>
                   </div>
                   <div>
@@ -125,13 +129,13 @@ export default function PricingPage({ onBack }: { onBack: () => void }) {
                   <div>
                     <p className="text-[10px] text-gray-400 dark:text-gray-600 uppercase tracking-wide">ถามโน้ต</p>
                     <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                      {formatLimit(limits.ask_notes, 'ครั้ง/ด.')}
+                      {formatLimit(limits.ask_notes, 'ครั้ง', plan)}
                     </p>
                   </div>
                   <div>
                     <p className="text-[10px] text-gray-400 dark:text-gray-600 uppercase tracking-wide">AI แนะนำ</p>
                     <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                      {formatLimit(limits.ai_suggest, 'ครั้ง/ด.')}
+                      {formatLimit(limits.ai_suggest, 'ครั้ง', plan)}
                     </p>
                   </div>
                 </div>

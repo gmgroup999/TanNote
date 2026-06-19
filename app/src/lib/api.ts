@@ -438,8 +438,9 @@ export async function fetchUsage(): Promise<UsageSummary | null> {
     },
   ).catch(() => null);
   if (!res?.ok) return null;
-  const data = await res.json() as UsageSummary | null;
-  return data ? { ...data, period } : null;
+  // get_current_usage derives the correct period from the user's plan and
+  // returns it in `period`; don't override with the client-computed month.
+  return (await res.json()) as UsageSummary | null;
 }
 
 export async function saveCloudBackupEnabled(enabled: boolean): Promise<void> {

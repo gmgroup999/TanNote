@@ -20,7 +20,7 @@
 
 import { GoogleGenAI } from "npm:@google/genai";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { PLAN_LIMITS, SUPPORTED_LANGUAGES, currentPeriod, quotaExceededResponse } from "../_shared/plans.ts";
+import { PLAN_LIMITS, SUPPORTED_LANGUAGES, periodForPlan, quotaExceededResponse } from "../_shared/plans.ts";
 import { verifyLiffToken } from "../_shared/liff-verify.ts";
 
 // ─── Env ─────────────────────────────────────────────────────────────────────
@@ -158,7 +158,7 @@ Deno.serve(async (req: Request) => {
     const userPlan = (_planExpiresAt && _planExpiresAt < new Date()) ? "free" : ((userRow?.plan as string) ?? "free");
 
     // ── 2b. Check recording + ai_suggest quotas (single DB query) ───────────
-    const period       = currentPeriod();
+    const period       = periodForPlan(userPlan);
     const recLimit     = PLAN_LIMITS[userPlan]?.recording_minutes ?? PLAN_LIMITS.free.recording_minutes;
     const suggestLimit = PLAN_LIMITS[userPlan]?.ai_suggest        ?? PLAN_LIMITS.free.ai_suggest;
     if (userId) {

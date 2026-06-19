@@ -133,12 +133,12 @@ Deno.serve(async (req: Request) => {
       const { userId } = body as { userId?: string };
       if (!userId) return respond({ error: "userId ต้องระบุ" }, 400);
 
-      const period = new Date().toISOString().slice(0, 7);
+      // Clear every period bucket so the reset works for any plan tier
+      // (free=monthly, starter=yearly, pro/extra=lifetime).
       const { error } = await svc
         .from("usage_tracking")
-        .update({ recording_minutes: 0, ask_notes_count: 0, ai_suggest_count: 0 })
-        .eq("user_id", userId)
-        .eq("period", period);
+        .delete()
+        .eq("user_id", userId);
       if (error) throw new Error(error.message);
       return respond({ ok: true });
     }

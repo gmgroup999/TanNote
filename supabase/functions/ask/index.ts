@@ -13,7 +13,7 @@
 
 import { GoogleGenAI } from "npm:@google/genai";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { PLAN_LIMITS, currentPeriod, quotaExceededResponse } from "../_shared/plans.ts";
+import { PLAN_LIMITS, periodForPlan, quotaExceededResponse } from "../_shared/plans.ts";
 import { verifyLiffToken } from "../_shared/liff-verify.ts";
 
 // ─── Env ──────────────────────────────────────────────────────────────────────
@@ -99,7 +99,7 @@ Deno.serve(async (req: Request) => {
     const tone     = (userRow?.tone as string) ?? "casual";
 
     // ── 2b. Check ask-notes quota ────────────────────────────────────────────
-    const period   = currentPeriod();
+    const period   = periodForPlan(userPlan);
     const askLimit = PLAN_LIMITS[userPlan]?.ask_notes ?? PLAN_LIMITS.free.ask_notes;
     if (userId && askLimit !== null) {
       const { data: usageRow } = await supabase
@@ -320,7 +320,7 @@ ${notesContext || "(ไม่มีข้อมูล)"}
     // ── 9. Increment ask count (fire-and-forget) ─────────────────────────────
     if (userId) {
       void (async () => {
-        try { await supabase.rpc("increment_ask_count", { p_user_id: userId, p_period: currentPeriod() }); }
+        try { await supabase.rpc("increment_ask_count", { p_user_id: userId, p_period: period }); }
         catch { /* ignore */ }
       })();
     }

@@ -1,16 +1,19 @@
 import { useEffect, useState } from 'react';
 import { fetchUsage, type UsageSummary } from '../lib/api';
-import { PLAN_LIMITS, PLAN_INFO, usageColor, usageRecommendation, type Plan } from '../config/plans';
+import { PLAN_LIMITS, PLAN_INFO, usageColor, usageRecommendation, quotaPeriodLabel, type Plan } from '../config/plans';
 import { setPlanCache } from '../lib/planCache';
 
-function Bar({ label, used, limit, unit }: {
-  label: string; used: number; limit: number | null; unit: string;
+function Bar({ label, used, limit, unit, plan }: {
+  label: string; used: number; limit: number | null; unit: string; plan: Plan;
 }) {
   const pct       = limit ? Math.min(1, used / limit) * 100 : 0;
   const colorClass = usageColor(used, limit);
+  const { suffix, lifetime } = quotaPeriodLabel(plan);
   const labelText  = limit === null
     ? `${used} ${unit} (ไม่จำกัด)`
-    : `${used}/${limit} ${unit}`;
+    : lifetime
+    ? `${used}/${limit} ${unit} (ตลอดชีพ)`
+    : `${used}/${limit} ${unit}${suffix}`;
 
   return (
     <div className="flex flex-col gap-1">
@@ -79,7 +82,11 @@ export default function UsageIndicator({ onOpenPricing }: { onOpenPricing?: () =
           </span>
         </div>
         <span className="text-[10px] text-gray-400 dark:text-gray-600">
-          {new Date().toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}
+          {plan === 'starter'
+            ? `ปี ${new Date().getFullYear() + 543}`
+            : (plan === 'pro' || plan === 'extra')
+            ? 'ตลอดชีพ'
+            : new Date().toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}
         </span>
       </div>
 
@@ -89,19 +96,22 @@ export default function UsageIndicator({ onOpenPricing }: { onOpenPricing?: () =
           label="🎙 บันทึกเสียง"
           used={usage.recording_minutes}
           limit={limits.recording_minutes}
-          unit="นาที/ด."
+          unit="นาที"
+          plan={plan}
         />
         <Bar
           label="💬 ถามโน้ต"
           used={usage.ask_notes_count}
           limit={limits.ask_notes}
-          unit="ครั้ง/ด."
+          unit="ครั้ง"
+          plan={plan}
         />
         <Bar
           label="🤖 AI แนะนำแท็ก"
           used={usage.ai_suggest_count}
           limit={limits.ai_suggest}
-          unit="ครั้ง/ด."
+          unit="ครั้ง"
+          plan={plan}
         />
       </div>
 
