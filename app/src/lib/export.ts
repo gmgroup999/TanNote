@@ -95,11 +95,6 @@ function isMobile(): boolean {
   return navigator.maxTouchPoints > 0 || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
-/** True if the Web Share API can share this file (mobile/WebView path). */
-function canShareFile(file: File): boolean {
-  return isMobile() && typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] });
-}
-
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -112,24 +107,68 @@ function downloadBlob(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function isAbort(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'AbortError';
+}
+
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch { /* fall through to legacy path */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Save a generated file. On mobile / LINE in-app browser the `<a download>`
- * trick is ignored, so use the native share sheet (Web Share API) which lets
- * the user save or forward the file. Desktop keeps the direct download.
+ * Save/export generated content across environments:
+ *   • Desktop browsers → direct file download (`<a download>`).
+ *   • Capable mobile → Web Share with the actual file (save to Files, forward…).
+ *   • LINE in-app browser / WebViews without file share → share as text, then
+ *     fall back to copying to the clipboard. These WebViews ignore `<a download>`
+ *     and block `window.open`, which is why the buttons appeared to do nothing.
  */
 async function saveOrShare(content: string, filename: string, mime: string) {
   const blob = new Blob([content], { type: mime });
-  const file = new File([blob], filename, { type: mime });
-  if (canShareFile(file)) {
-    try {
-      await navigator.share({ files: [file], title: filename });
+
+  if (isMobile()) {
+    // 1. Share the real file when the platform allows it.
+    const file = new File([blob], filename, { type: mime });
+    if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: filename }); return; }
+      catch (err) { if (isAbort(err)) return; }
+    }
+    // 2. Many WebViews support text sharing but not file sharing.
+    if (typeof navigator.share === 'function') {
+      try { await navigator.share({ title: filename, text: content }); return; }
+      catch (err) { if (isAbort(err)) return; }
+    }
+    // 3. Last resort — copy so the content is never trapped in the app.
+    if (await copyToClipboard(content)) {
+      alert(
+        'คัดลอกเนื้อหาแล้ว ✓ วางในแอปโน้ต/แชตได้เลย\n\n' +
+        'หมายเหตุ: เบราว์เซอร์ในแอป LINE บันทึกเป็นไฟล์ไม่ได้ ' +
+        'ถ้าต้องการไฟล์ ให้เปิดผ่านเบราว์เซอร์ภายนอก (เมนู ⋮ → เปิดในเบราว์เซอร์)',
+      );
       return;
-    } catch (err) {
-      // User cancelled the share sheet — don't fall through to a download.
-      if (err instanceof DOMException && err.name === 'AbortError') return;
-      // Any other failure: fall back to download below.
     }
   }
+
+  // Desktop, or mobile when everything above failed.
   downloadBlob(blob, filename);
 }
 
