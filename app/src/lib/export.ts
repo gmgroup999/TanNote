@@ -90,8 +90,17 @@ function buildPlainText(record: AudioRecord): string {
   return lines.join('\n');
 }
 
-function downloadBlob(content: string, filename: string, mime: string) {
-  const blob = new Blob([content], { type: mime });
+function isMobile(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return navigator.maxTouchPoints > 0 || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+/** True if the Web Share API can share this file (mobile/WebView path). */
+function canShareFile(file: File): boolean {
+  return isMobile() && typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] });
+}
+
+function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -103,6 +112,27 @@ function downloadBlob(content: string, filename: string, mime: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/**
+ * Save a generated file. On mobile / LINE in-app browser the `<a download>`
+ * trick is ignored, so use the native share sheet (Web Share API) which lets
+ * the user save or forward the file. Desktop keeps the direct download.
+ */
+async function saveOrShare(content: string, filename: string, mime: string) {
+  const blob = new Blob([content], { type: mime });
+  const file = new File([blob], filename, { type: mime });
+  if (canShareFile(file)) {
+    try {
+      await navigator.share({ files: [file], title: filename });
+      return;
+    } catch (err) {
+      // User cancelled the share sheet — don't fall through to a download.
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      // Any other failure: fall back to download below.
+    }
+  }
+  downloadBlob(blob, filename);
+}
+
 function safeFilename(title: string | undefined, ext: string): string {
   const base = (title ?? 'tannote')
     .replace(/[<>:"/\\|?*]/g, '')
@@ -112,11 +142,11 @@ function safeFilename(title: string | undefined, ext: string): string {
 }
 
 export function exportMarkdown(record: AudioRecord) {
-  downloadBlob(buildMarkdown(record), safeFilename(record.title, 'md'), 'text/markdown');
+  return saveOrShare(buildMarkdown(record), safeFilename(record.title, 'md'), 'text/markdown');
 }
 
 export function exportText(record: AudioRecord) {
-  downloadBlob(buildPlainText(record), safeFilename(record.title, 'txt'), 'text/plain');
+  return saveOrShare(buildPlainText(record), safeFilename(record.title, 'txt'), 'text/plain');
 }
 
 export function exportPdf(record: AudioRecord) {
@@ -152,10 +182,45 @@ ${md
 </body>
 </html>`;
 
-  const w = window.open('', '_blank');
-  if (!w) return;
-  w.document.write(html);
-  w.document.close();
-  w.focus();
-  setTimeout(() => { w.print(); }, 300);
+  // Print via a hidden iframe instead of window.open: popup blockers and
+  // mobile WebViews return null from window.open, making the PDF button do
+  // nothing. The iframe approach prints (→ "Save as PDF") on desktop and
+  // Android Chrome. On WebViews without print support, fall back to sharing
+  // the HTML file so the user still gets the content.
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  document.body.appendChild(iframe);
+
+  const cleanup = () => {
+    setTimeout(() => { if (iframe.parentNode) document.body.removeChild(iframe); }, 1000);
+  };
+
+  iframe.onload = () => {
+    try {
+      const win = iframe.contentWindow;
+      if (!win || typeof win.print !== 'function') throw new Error('no print');
+      win.focus();
+      win.print();
+      cleanup();
+    } catch {
+      cleanup();
+      // WebView can't print — share the HTML file as a fallback.
+      void saveOrShare(html, safeFilename(record.title, 'html'), 'text/html');
+    }
+  };
+
+  const doc = iframe.contentWindow?.document;
+  if (doc) {
+    doc.open();
+    doc.write(html);
+    doc.close();
+  } else {
+    document.body.removeChild(iframe);
+    void saveOrShare(html, safeFilename(record.title, 'html'), 'text/html');
+  }
 }
