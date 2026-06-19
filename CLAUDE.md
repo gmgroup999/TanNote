@@ -203,15 +203,115 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 - **URL**: `https://czczwtjgmjnboeeibxcd.supabase.co`
 - **Production URL**: `https://tannote.z-node.cc` (deployed บน Z-Node/Coolify)
 - **Secrets set**: `GEMINI_API_KEY`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET` ✅ (อัปเดต 2026-06-11), `LINE_CHANNEL_ID=2010157477` ✅ (เพิ่ม 2026-06-11), `ADMIN_EMAILS`, `NODE_ID`, `ADMIN_LINE_USER_ID=U8414fbb78490e5c27a1b52ee7dc4593b` ✅
-- **Functions deployed**: `transcribe`, `ask`, `send-reminders`, `line-webhook`, `save-memory`, `admin-api`, `patch-note`, `r2-backup` ✅ (redeployed 2026-06-11 — LIFF JWT + security hardening; save-memory + patch-note รอ deploy รอบถัดไป)
+- **Functions deployed**: `transcribe`, `ask`, `send-reminders`, `line-webhook`, `save-memory`, `admin-api`, `patch-note`, `r2-backup`, `set-webhook` ✅ — ทั้งหมด ACTIVE (save-memory + patch-note deploy แล้ว 2026-06-11; transcribe/ask/admin-api redeployed 2026-06-19 quota fix); `set-webhook` ไม่มี source ใน repo
 - **Extensions enabled**: `pg_cron`, `pg_net`, `pgvector`
 - **pg_cron job**: schedule id 1 — ทุก 1 นาที → `send-reminders`; schedule `enforce-plan-expiry` — ทุกชั่วโมง → downgrade Starter ที่หมดอายุ
 - **LINE Webhook URL**: `https://czczwtjgmjnboeeibxcd.supabase.co/functions/v1/line-webhook` ✅ (active)
 - **LINE bot**: `@077vkaxj` = `@tannote` (บัญชีเดียวกัน) — Admin LINE User ID: `U8414fbb78490e5c27a1b52ee7dc4593b`
-- **LINE Rich Menu**: `richmenu-b4523add3304db39d6e14a9a6c396b3a` — set เป็น default ✅ (2026-06-11)
-- **LIFF**: Published ✅ (2026-06-11) — endpoint URL: `https://tannote.z-node.cc/app`
+- **LINE Rich Menu**: `richmenu-63977447feea57f4299a347397f3adf3` — 1-ปุ่ม TanNote logo, set เป็น default ✅ (2026-06-12)
+- **LIFF**: Published ✅ (2026-06-11) — endpoint URL: `https://tannote.z-node.cc/` (เปลี่ยนกลับจาก `/app` เมื่อ 2026-06-12)
 - **SMTP**: Resend — smtp.resend.com:465, sender: `onboarding@resend.dev`
-- **Migrations applied**: ทั้งหมดถึง `20260611000001_tighten_rls.sql` ✅
+- **Migrations applied**: ทั้งหมดถึง `20260619000001_quota_period_per_plan.sql` ✅
+
+---
+
+## สิ่งที่ทำวันนี้ (2026-06-19)
+
+### System Health Check
+| ตรวจ | ผล |
+|---|---|
+| Production `tannote.z-node.cc` | 200 ✅ |
+| Edge Functions (8 + `set-webhook`) | ACTIVE ทั้งหมด ✅ |
+| Secrets | ครบ (`LINE_CHANNEL_ID` + `LINE_CHANNEL_SECRET` set 2026-06-11) ✅ |
+| `save-memory` + `patch-note` | **deploy ไปแล้ว** 2026-06-11 08:50 UTC (TODO 🔴 เดิมล้าสมัย — ไม่ต้อง deploy แล้ว) |
+| `transcribe`/`ask`/`patch-note` auth order | ถูกต้อง (LIFF verify → suspension → plan → quota) ✅ |
+| TypeScript build | สะอาด (exit 0) ✅ |
+| ⚠️ พบ | `set-webhook` function ไม่อยู่ใน CLAUDE.md (entrypoint `/TanNote/...` deploy คนละวิธี ไม่มี source ใน repo) |
+| ⚠️ พบ | auth gap: ทุก function verify LIFF token แบบ `if (liffToken)` — ถ้า omit token + ปลอม `x-line-user-id` = ปลอมตัวเป็น user อื่นได้ (known tradeoff สำหรับ browser testing) |
+
+### 🔴 Bug Fix — Quota period ไม่ตรง spec ของแต่ละแพลน
+ปัญหาจากภาพ Settings (Extra แสดง "33 นาที/ด. (ไม่จำกัด)" ปนกัน) → พบว่า `currentPeriod()` คืน `YYYY-MM` เสมอ ทำให้ quota **ทุกแผนรีเซ็ตรายเดือน**
+
+| แผน | spec | เดิม (ผิด) | แก้แล้ว |
+|---|---|---|---|
+| free | 60น./30วัน | รายเดือน | รายเดือน `YYYY-MM` ✅ |
+| starter | 800น./1ปี | รายเดือน (กว้างเกิน 12×) | รายปี `Y{YYYY}` ✅ |
+| pro | 2500น./ตลอดชีพ | รายเดือน | `lifetime` ✅ |
+| extra | ∞ | ∞ | `lifetime` (∞ อยู่แล้ว) ✅ |
+
+- `period_for_plan()` (SQL) + `periodForPlan()` (TS) ใช้ Asia/Bangkok ให้ค่าตรงกัน
+- `get_current_usage` + `admin_list_users` คำนวณ effective plan + period เองใน SQL
+- `admin-api reset_usage` ลบทุก bucket (ใช้ได้ทุกแผน)
+- UI แสดง "/ด." / "/ปี" / "(ตลอดชีพ)" ตามแผน (UsageIndicator + PricingPage)
+- **Verified production**: `period_for_plan` → free=`2026-06`, starter=`Y2026`, pro/extra=`lifetime`; `get_current_usage` (Jack/extra) → `period:"lifetime"` ✅
+- **หมายเหตุ**: pro/extra user เดิม lifetime bucket เริ่มที่ 0 (usage รายเดือนเก่าใน DB ไม่ถูกนับใน bucket ใหม่) — extra ไม่กระทบ (∞), pro = generous
+
+### 🔴 Bug Fix — Export บนมือถือไม่ทำงาน
+LINE in-app browser ละเลย `<a download>` + `window.open('_blank')` คืน `null` → ปุ่ม .txt/.md/PDF เงียบ
+- `.txt`/`.md`: `saveOrShare()` — มือถือลอง **แชร์ไฟล์ → แชร์ข้อความ → คัดลอก clipboard** (PC คง download เดิม)
+- `PDF`: เปลี่ยน `window.open` → hidden **iframe print** (กัน popup-block/WebView null) + fallback แชร์ html
+- มือถือตรวจจาก `maxTouchPoints` + UA → PC ไม่กระทบ; Web Share เรียก sync ใน click handler (user gesture ไม่หาย)
+- **ข้อจำกัด**: LINE WebView (iOS WKWebView) ไม่ support file share → ตกมาที่แชร์ข้อความ/clipboard; อยากได้ไฟล์จริงต้องเปิดในเบราว์เซอร์ภายนอก
+
+---
+
+## ไฟล์ที่แก้ไขวันนี้ (2026-06-19)
+
+| ไฟล์ | สิ่งที่เปลี่ยน |
+|---|---|
+| `supabase/migrations/20260619000001_quota_period_per_plan.sql` | **ไฟล์ใหม่** — `period_for_plan()`; rewrite `get_current_usage` (effective plan + period); rewrite `admin_list_users` (per-user bucket) |
+| `supabase/functions/_shared/plans.ts` | + `periodForPlan(plan)` (Bangkok tz, ต้อง sync กับ SQL); `currentPeriod()` เหลือไว้ backward-compat (ไม่ใช้แล้ว) |
+| `supabase/functions/transcribe/index.ts` | check + increment ใช้ `periodForPlan(userPlan)` |
+| `supabase/functions/ask/index.ts` | check + increment ใช้ `periodForPlan(userPlan)` |
+| `supabase/functions/admin-api/index.ts` | `reset_usage` ลบทุก usage_tracking row ของ user (ไม่ใช่เฉพาะเดือนปัจจุบัน) |
+| `app/src/lib/api.ts` | `fetchUsage` ใช้ period จาก server ไม่ override ด้วยรายเดือน client |
+| `app/src/config/plans.ts` | + `quotaPeriodLabel(plan)` |
+| `app/src/components/UsageIndicator.tsx` | `Bar` รับ `plan` → label "/ด." / "/ปี" / "(ตลอดชีพ)"; header period ตามแผน |
+| `app/src/pages/PricingPage.tsx` | `formatLimit(val, unitBase, plan)` → labels ต่อแผน |
+| `app/src/lib/export.ts` | `saveOrShare()` (file→text→clipboard fallback); `exportPdf` iframe print; `copyToClipboard()` helper |
+
+### Deploy ✅ (2026-06-19)
+| Commit | เนื้อหา | Deploy |
+|---|---|---|
+| `dd09aaa` | Quota period per plan (migration + transcribe/ask/admin-api + frontend) | DB push + 3 functions ✅; frontend → Z-Node |
+| `92c0640` | Export mobile: Web Share + iframe print | frontend → Z-Node |
+| `69ac83a` | Export: text-share + clipboard fallback (LINE WebView) | frontend → Z-Node |
+
+---
+
+## สิ่งที่ทำวันนี้ (2026-06-12)
+
+### Bug Fix — LINE app ใช้งานไม่ได้ (white screen)
+| งาน | ผล |
+|---|---|
+| Root cause | LIFF endpoint เปลี่ยนจาก `/` → `/app` เมื่อวานนี้ แต่ Z-Node serve SPA ที่ `/` ไม่ใช่ `/app` |
+| Fix | User เปลี่ยน LIFF endpoint กลับเป็น `https://tannote.z-node.cc/` ใน LINE Developer Console ✅ |
+| Code sync | `manifest.json`, `sw.js`, `nginx.conf` อัปเดตให้ใช้ `/` แทน `/app` ทั้งหมด |
+| สาเหตุลึก | Z-Node/Coolify generate nginx ของตัวเอง — SPA ถูก serve ที่ `/` เสมอ ไม่ว่า nginx.conf เราจะบอกอะไร |
+| Build arg risk | ถ้า `VITE_LIFF_ID` ไม่ถูก set ใน Coolify build args → `LIFF_ENABLED=false` → LINE login ไม่ทำงาน |
+
+### Rich Menu Redesign — เสร็จแล้ว ✅
+| งาน | ผล |
+|---|---|
+| `scripts/setup-rich-menu.mjs` เขียนใหม่ | จาก 2-ปุ่ม (red/black) → 1-ปุ่มครอบทั้งหน้า (TanNote logo บนพื้นแดง) |
+| เปลี่ยน image gen method | จาก pixel-art Node.js → **Playwright screenshot** (รองรับ Thai font + SVG ถูกต้อง) |
+| Design | `#E24B4A` bg + mic SVG + REC dot + "TanNote" text กึ่งกลาง; 2500×843px |
+| Action | กดที่ไหนก็ตาม → เปิด LIFF URL `https://liff.line.me/2010157477-I2NTp3zI` ทันที |
+| Deploy | รัน `node scripts/setup-rich-menu.mjs <TOKEN>` ✅ — `richmenu-63977447feea57f4299a347397f3adf3` set เป็น default |
+| Windows fix | `pathToFileURL` + import `playwright/index.js` + CJS default export handling |
+
+---
+
+## ไฟล์ที่แก้ไขวันนี้ (2026-06-12)
+
+| ไฟล์ | สิ่งที่เปลี่ยน |
+|---|---|
+| `app/public/manifest.json` | `start_url` + shortcut `url`: `/app` → `/` |
+| `app/public/sw.js` | `PRECACHE` + navigate fallback: `/app` → `/`; cache v2 ยังคงอยู่ |
+| `nginx.conf` | ลบ `location = /app` block ออก (Z-Node ไม่ใช้ nginx.conf ของเราอยู่แล้ว) |
+| `scripts/setup-rich-menu.mjs` | **เขียนใหม่** — Playwright image gen, 1-button, TanNote logo; แก้ Windows ESM import (`pathToFileURL` + `playwright/index.js` + CJS default fallback) |
+| `scripts/tannote-rich-menu.png` | **ไฟล์ใหม่** — rich menu image 2500×843px ที่ generate ออกมา (เพิ่มใน `.gitignore` แล้ว) |
+| `.gitignore` | + `scripts/tannote-rich-menu.png` |
 
 ---
 
@@ -636,9 +736,32 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 
 ## TODO ถัดไป
 
-### 🔴 Redeploy Edge Functions (save-memory + patch-note)
-- commit `9753911` เพิ่ม LIFF JWT verify + ownership ใน `save-memory` และ `patch-note`
-- ยังไม่ได้ deploy ไป Supabase: `npx supabase functions deploy save-memory --no-verify-jwt && npx supabase functions deploy patch-note --no-verify-jwt`
+### 🟢 Redeploy save-memory + patch-note — เสร็จแล้ว
+- ตรวจ 2026-06-19: ทั้งคู่ deploy ไป Supabase แล้วตั้งแต่ 2026-06-11 08:50 UTC (มี LIFF JWT + ownership ครบ) — TODO เดิมล้าสมัย
+
+### 🟡 ทดสอบ Quota period ใหม่บน device จริง
+- starter: ใช้จนเกิน → ต้องเต็มแบบ **รายปี** (ไม่รีเซ็ตเดือนหน้า)
+- pro: recording นับสะสม **ตลอดชีพ** (cap 2500), ask/suggest = ∞
+- UI: ตรวจ label "/ปี" (starter), "(ตลอดชีพ)" (pro), header period ตามแผน
+
+### 🟡 ทดสอบ Export บนมือถือ (LINE)
+- กด .txt/.md → ควรขึ้น share sheet หรือ "คัดลอกเนื้อหาแล้ว ✓"
+- ถ้าอยากได้ไฟล์จริง → เปิดในเบราว์เซอร์ภายนอก (⋮ → เปิดในเบราว์เซอร์)
+
+### 🟡 พิจารณา auth gap (optional liffToken)
+- ทุก function verify token แบบ `if (liffToken)` → ปลอม `x-line-user-id` โดยไม่ส่ง token = ปลอมตัวได้
+- ทางแก้: บังคับ token-required ใน production แต่คง `dev_xxx` fallback ไว้ browser testing
+
+### 🔵 set-webhook function ไม่มี source ใน repo
+- ACTIVE บน Supabase (v8) แต่ entrypoint `/TanNote/...` (deploy คนละวิธี) — ไม่มีไฟล์ใน repo local; พิจารณาดึง source มาเก็บหรือลบถ้าไม่ใช้
+
+### 🔴 ยืนยัน VITE_LIFF_ID ใน Coolify build args
+- ถ้า build arg หายไป → `LIFF_ENABLED=false` → LINE login ไม่ทำงาน → white screen
+- ตรวจสอบ: Coolify → TanNote service → Environment Variables → `VITE_LIFF_ID=2010157477-I2NTp3zI`
+
+### 🟢 LINE Rich Menu ใหม่ — เสร็จแล้ว
+- `richmenu-63977447feea57f4299a347397f3adf3` — 1-ปุ่ม TanNote logo (แดง + ไมค์ + REC + TanNote) ✅
+- Set เป็น default สำหรับผู้ใช้ทุกคนผ่าน API แล้ว ✅
 
 ### 🟡 ทดสอบบน device จริง (ต้องทำ)
 | flow | ขั้นตอน |
@@ -649,8 +772,8 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 | LINE Reminder | บันทึก "📅 นัดหมาย" → รอ 1 นาที → Flex Message มา → กดปุ่มได้ |
 
 ### 🟢 สิ่งที่เสร็จแล้ว (ไม่ต้องทำอีก)
-- LINE Rich Menu: `richmenu-b4523add3304db39d6e14a9a6c396b3a` set เป็น default ✅
-- LIFF Published ✅
+- LIFF endpoint กลับมาที่ `https://tannote.z-node.cc/` (ไม่ใช่ `/app`) ✅
+- manifest.json + sw.js อัปเดตให้ตรงกัน ✅
 - Security hardening ทั้งหมด ✅
 
 ### รูปโปรไฟล์ใน Admin Panel
@@ -667,3 +790,8 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 | ไมโครโฟน ถามทุก session | Android WebView ไม่ persist mic permission ข้าม session — OS limitation | แก้ไม่ได้ใน code; user กด "อนุญาตเฉพาะครั้งนี้" ทุกครั้งที่เปิด LINE ใหม่ |
 | ระบบชำระเงิน auto-verify ยังไม่มี | ปัจจุบัน manual verify ผ่าน LINE + admin panel; auto-webhook เป็น optional อนาคต | integrate payment webhook ถ้าต้องการ scale |
 | LIFF token เป็น `null` นอก LINE client | `liff.getIDToken()` คืน null เมื่อเปิดในเบราว์เซอร์ปกติ — fallback ไปใช้ `x-line-user-id` จาก localStorage | ยอมรับ: browser testing ใช้ `dev_xxx` fallback; production ใช้ผ่าน LINE เท่านั้น |
+| `VITE_LIFF_ID` Coolify build arg ยังไม่ได้ยืนยัน | ถ้า build arg ไม่ถูก set → `LIFF_ENABLED=false` → LINE users เห็น LoginPage ไม่มีปุ่ม LINE login → ติดอยู่หน้า login | ตรวจสอบ Coolify → TanNote service → Environment Variables (Build args) ว่ามี `VITE_LIFF_ID=2010157477-I2NTp3zI` |
+| Export ไฟล์จริงบน LINE WebView | iOS WKWebView ไม่ support file share + บล็อก download → ได้แค่แชร์ข้อความ/คัดลอก clipboard | เปิดในเบราว์เซอร์ภายนอก (⋮ → เปิดในเบราว์เซอร์) แล้ว download ตรง ๆ ได้; โค้ดมี fallback clipboard ให้แล้ว |
+| PDF บน LINE WebView | `iframe.print()` อาจไม่ทำงานใน WebView (โดยเฉพาะ iOS) | fallback แชร์เป็นไฟล์ .html; หรือเปิดในเบราว์เซอร์ภายนอกแล้วสั่งพิมพ์ → Save as PDF |
+| auth gap: optional liffToken | function verify token แบบ `if (liffToken)` — omit token + ปลอม `x-line-user-id` = ปลอมตัวเป็น user อื่นได้ | บังคับ token-required ใน production (คง `dev_xxx` fallback ไว้ test) — ดู TODO |
+| Quota: pro/extra user เดิม bucket รีเซ็ต | เปลี่ยน period key → lifetime bucket เริ่มที่ 0 (usage รายเดือนเก่าไม่ถูกนับต่อ) | ยอมรับได้ — extra=∞ ไม่กระทบ, pro = generous (ได้ 2500 เต็มนับจากนี้) |
