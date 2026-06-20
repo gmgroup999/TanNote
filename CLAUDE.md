@@ -258,7 +258,13 @@ Frontend **ไม่ได้ deploy ผ่าน Coolify** — server ใช้
 - แก้: `UPDATE projects SET "deployBranch"='main'` (project id `cmpi2lktj0000j29w86sna6ne`) ✅
 - สร้าง **GitHub webhook** (id `644333393`) → `https://auto.z-node.cc/api/webhooks/github` (content-type json, push+pull_request, secret = project.webhookSecret); ping delivery = 200 ✅
 - ใช้ token จาก git credential ของเครื่อง (`gho_`, scope `repo`) สร้าง webhook (Z-Node เก็บแค่ placeholder `ZnodeAdmin2026!` ไม่ใช่ token จริง)
+
+**🔴 bug ใน Z-Node webhook path (auto-deploy ครั้งแรก FAILED)**: `runProductionDeploy` ส่ง `githubToken`/`envVars` แบบ **ไม่ decrypt** (ต่างจาก manual route) → clone URL กลายเป็น `https://enc:...@github.com` (malformed) → clone fail
+- แก้แบบ targeted (ไม่แตะโค้ด platform): `UPDATE projects SET "githubToken"=NULL` — repo เป็น **public** → clone ตรงๆ ได้ ไม่ต้องใช้ token
+- envVars ที่ไม่ decrypt **ไม่กระทบ** — Vite อ่าน `app/.env.production` (**committed ใน repo**) ตอน build (Z-Node inject envVars เข้า runtime `environment:` เท่านั้น ซึ่งไร้ผลกับ static SPA)
+- **Verified**: retrigger webhook → deployment SUCCESS, production 200, bundle มี export overlay + anon key + LIFF id baked ครบ ✅
 - **ผลลัพธ์**: push → main = auto-deploy เอง (ใส่ `[skip deploy]` ใน commit msg = ข้าม)
+- **⚠️ ระวัง**: ถ้าแก้ env vars ผ่าน Z-Node dashboard มันจะ re-encrypt envVars + อาจ set githubToken กลับ → auto-deploy พังอีก (ต้อง null githubToken ใหม่)
 
 ### 🟢 set-webhook source เข้า repo
 - `npx supabase functions download set-webhook` → `supabase/functions/set-webhook/index.ts` (one-shot util ตั้ง LINE webhook endpoint URL); track ใน repo แล้ว
