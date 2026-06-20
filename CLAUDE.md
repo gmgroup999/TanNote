@@ -276,10 +276,11 @@ Frontend **ไม่ได้ deploy ผ่าน Coolify** — server ใช้
 
 ### 🟢 Export: download ไฟล์จริงใน LINE (ผ่านเบราว์เซอร์ภายนอก)
 LINE in-app browser ไม่มี download handler → download ตรงๆ ไม่ได้ ต้องส่งไปเบราว์เซอร์ภายนอก
-- `export.ts`: ใน LINE → `window.location.href = '/download.html?openExternalBrowser=1#t=..&n=..&d=<base64>'` → LINE เปิด system browser; เนื้อหาอยู่ใน URL **fragment** (ไม่ส่งขึ้น server); ถ้า payload เกิน 120k → fallback overlay copy
-- `app/public/download.html`: หน้า static เล็กๆ decode fragment → `<a download>` (txt/md) หรือ print→Save as PDF (pdf)
-- desktop/มือถือทั่วไป: download ตรงเหมือนเดิม
-- Verified: download.html live (200), bundle มี openExternalBrowser ✅
+- **วิธีเปิด external browser**: ต้องใช้ `liff.openWindow({ url, external: true })` (helper `openExternalBrowser()` ใน liff.ts) — **`?openExternalBrowser=1` ผ่าน `location.href` ใช้ไม่ได้** สำหรับ in-app same-origin navigation (จะวนใน WebView เดิม → download เงียบ)
+- `export.ts`: ใน LINE → สร้าง URL `${origin}/download.html#t=..&n=..&d=<base64>` (เนื้อหาอยู่ใน **fragment** ไม่ส่งขึ้น server) → `liff.openWindow(external:true)`; payload เกิน 120k → fallback overlay copy
+- `app/public/download.html`: static page decode fragment → `<a download>` (txt/md) หรือ print→Save as PDF (pdf)
+- **UTF-8 BOM**: ต้อง prepend `﻿` ก่อนสร้าง Blob ไม่งั้น Android/Windows viewer เดา encoding ผิด → ภาษาไทยเป็น mojibake (ใส่ทั้ง download.html + desktop path)
+- Verified: เปิด Chrome external สำเร็จ + ดาวน์โหลดไฟล์ได้ ✅ (รอยืนยันไทยอ่านออกหลังใส่ BOM)
 
 ### 🟡 Roll back `REQUIRE_LINE_TOKEN=false`
 - กันเสี่ยง lock LINE user ออกระหว่าง stabilize (email gap ยังปิดอยู่ unconditionally) — redeploy transcribe/ask/save-memory/patch-note แล้ว
