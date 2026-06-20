@@ -274,6 +274,13 @@ Frontend **ไม่ได้ deploy ผ่าน Coolify** — server ใช้
 - **Verified prod**: index.html `no-cache`, asset `immutable`, old asset → **404**, sw.js = self-destruct ✅
 - **Device ที่ค้างอยู่แล้ว**: ต้องปิด LINE สนิท+เปิดใหม่ 1 ครั้ง (หรือ clear cache / เปิดเบราว์เซอร์ภายนอก) ให้ HTTP cache เก่าหลุด
 
+### 🟢 Export: download ไฟล์จริงใน LINE (ผ่านเบราว์เซอร์ภายนอก)
+LINE in-app browser ไม่มี download handler → download ตรงๆ ไม่ได้ ต้องส่งไปเบราว์เซอร์ภายนอก
+- `export.ts`: ใน LINE → `window.location.href = '/download.html?openExternalBrowser=1#t=..&n=..&d=<base64>'` → LINE เปิด system browser; เนื้อหาอยู่ใน URL **fragment** (ไม่ส่งขึ้น server); ถ้า payload เกิน 120k → fallback overlay copy
+- `app/public/download.html`: หน้า static เล็กๆ decode fragment → `<a download>` (txt/md) หรือ print→Save as PDF (pdf)
+- desktop/มือถือทั่วไป: download ตรงเหมือนเดิม
+- Verified: download.html live (200), bundle มี openExternalBrowser ✅
+
 ### 🟡 Roll back `REQUIRE_LINE_TOKEN=false`
 - กันเสี่ยง lock LINE user ออกระหว่าง stabilize (email gap ยังปิดอยู่ unconditionally) — redeploy transcribe/ask/save-memory/patch-note แล้ว
 - จะเปิด `true` อีกครั้งหลังยืนยัน LIFF token flow บน device จริง
