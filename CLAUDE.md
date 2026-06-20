@@ -203,7 +203,7 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 - **URL**: `https://czczwtjgmjnboeeibxcd.supabase.co`
 - **Production URL**: `https://tannote.z-node.cc` (deployed บน Z-Node/Coolify)
 - **Secrets set**: `GEMINI_API_KEY`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET` ✅ (อัปเดต 2026-06-11), `LINE_CHANNEL_ID=2010157477` ✅ (เพิ่ม 2026-06-11), `ADMIN_EMAILS`, `NODE_ID`, `ADMIN_LINE_USER_ID=U8414fbb78490e5c27a1b52ee7dc4593b` ✅
-- **Secret `REQUIRE_LINE_TOKEN=true`** ✅ (set 2026-06-20) — บังคับ `U<32>` ต้องส่ง LIFF token ที่ถูกต้อง ไม่งั้น 401 "กรุณาเปิดแอปผ่าน LINE" (ปิด impersonation gap สำหรับ LINE class). **⚠️ ผลข้างเคียง**: LINE user ที่เปิดนอก LINE client (token=null) จะใช้งานไม่ได้ — ต้องเปิดผ่าน LINE เท่านั้น. Rollback: `npx supabase secrets set REQUIRE_LINE_TOKEN=false`
+- **Secret `REQUIRE_LINE_TOKEN=false`** (เคย set true 2026-06-20 แล้ว **roll back เป็น false**) — ถ้า true จะบังคับ `U<32>` ต้องส่ง LIFF token ไม่งั้น 401; ตอนนี้ปิดไว้กัน lockout ระหว่าง stabilize. เปิด true อีกครั้งหลังยืนยัน token flow บน device: `npx supabase secrets set REQUIRE_LINE_TOKEN=true` + redeploy 4 functions
 - **Functions deployed**: `transcribe`, `ask`, `send-reminders`, `line-webhook`, `save-memory`, `admin-api`, `patch-note`, `r2-backup`, `set-webhook` ✅ — ทั้งหมด ACTIVE (transcribe/ask/save-memory/patch-note redeployed 2026-06-20 auth-gap fix); `set-webhook` source ดึงเข้า repo แล้ว 2026-06-20 (`supabase/functions/set-webhook/index.ts`)
 - **Extensions enabled**: `pg_cron`, `pg_net`, `pgvector`
 - **pg_cron job**: schedule id 1 — ทุก 1 นาที → `send-reminders`; schedule `enforce-plan-expiry` — ทุกชั่วโมง → downgrade Starter ที่หมดอายุ
@@ -279,8 +279,13 @@ LINE in-app browser ไม่มี download handler → download ตรงๆ �
 - **วิธีเปิด external browser**: ต้องใช้ `liff.openWindow({ url, external: true })` (helper `openExternalBrowser()` ใน liff.ts) — **`?openExternalBrowser=1` ผ่าน `location.href` ใช้ไม่ได้** สำหรับ in-app same-origin navigation (จะวนใน WebView เดิม → download เงียบ)
 - `export.ts`: ใน LINE → สร้าง URL `${origin}/download.html#t=..&n=..&d=<base64>` (เนื้อหาอยู่ใน **fragment** ไม่ส่งขึ้น server) → `liff.openWindow(external:true)`; payload เกิน 120k → fallback overlay copy
 - `app/public/download.html`: static page decode fragment → `<a download>` (txt/md) หรือ print→Save as PDF (pdf)
-- **UTF-8 BOM**: ต้อง prepend `﻿` ก่อนสร้าง Blob ไม่งั้น Android/Windows viewer เดา encoding ผิด → ภาษาไทยเป็น mojibake (ใส่ทั้ง download.html + desktop path)
-- Verified: เปิด Chrome external สำเร็จ + ดาวน์โหลดไฟล์ได้ ✅ (รอยืนยันไทยอ่านออกหลังใส่ BOM)
+- **UTF-8 BOM**: prepend U+FEFF (`String.fromCharCode(0xFEFF)`) ก่อนสร้าง Blob ไม่งั้น Android/Windows viewer เดา encoding ผิด → ภาษาไทยเป็น mojibake (ใส่ทั้ง download.html + desktop path)
+- **Verified บน device จริง**: เปิด Chrome external + ดาวน์โหลด .txt/.md + **ภาษาไทยอ่านออก** ✅
+
+### 🟢 ซ่อนปุ่ม Export PDF (เหลือแค่ .txt/.md)
+- PDF print บนมือถือ layout เพี้ยน (ตัวอักษรบีบเป็นคอลัมน์แคบ) → ผู้ใช้ขอซ่อน
+- `RecordingsPage.tsx`: ลบปุ่ม PDF (+ลบ import `exportPdf`); ฟังก์ชัน `exportPdf` ยังคงอยู่ใน `export.ts` เผื่ออนาคต
+- เหลือ export แค่ **.txt / .md** (ทั้งคู่ดาวน์โหลดไฟล์จริง ไทยถูกต้อง)
 
 ### 🟡 Roll back `REQUIRE_LINE_TOKEN=false`
 - กันเสี่ยง lock LINE user ออกระหว่าง stabilize (email gap ยังปิดอยู่ unconditionally) — redeploy transcribe/ask/save-memory/patch-note แล้ว
@@ -289,16 +294,42 @@ LINE in-app browser ไม่มี download handler → download ตรงๆ �
 ### 🟢 set-webhook source เข้า repo
 - `npx supabase functions download set-webhook` → `supabase/functions/set-webhook/index.ts` (one-shot util ตั้ง LINE webhook endpoint URL); track ใน repo แล้ว
 
-### Git
-- `88ad4da` (path revert + rich menu), `7eb768a` (auth gap + set-webhook) → push origin/main ✅
+### Git commits วันนี้ (push origin/main ทั้งหมด ✅)
+| commit | เนื้อหา |
+|---|---|
+| `88ad4da` | Revert LIFF path `/app`→`/` + rewrite rich menu (งานค้าง 2026-06-12) |
+| `7eb768a` | ปิด auth impersonation gap + track set-webhook source |
+| `0f17dbc` | Harden `REQUIRE_LINE_TOKEN` parse (`.trim()`) + enable enforcement |
+| `6f3bb58` | Fix extra/pro null-collapse limit + bump SW cache v3 |
+| `6f9e9c1` | Export: in-app overlay fallback (LINE Android) |
+| `71fb7f4`/`450f1bc` | Z-Node deploy infra docs + auto-deploy live test |
+| `8c652cb` | Fix white-screen (cache headers + self-destruct SW) + roll back REQUIRE_LINE_TOKEN |
+| `a780acb` | Export: real download in LINE via external browser (download.html) |
+| `a0c3331` | Export: open external browser via `liff.openWindow` |
+| `4229735` | Export: UTF-8 BOM (แก้ไทย mojibake) |
+| `c281daf` | ซ่อนปุ่ม PDF export |
+| `e27f2ef`/`4e07dea`/`d98e2e9`/`aa02c5c`/`42ba164` | CLAUDE.md updates |
 
 ### ไฟล์ที่แก้ไขวันนี้ (2026-06-20)
 | ไฟล์ | สิ่งที่เปลี่ยน |
 |---|---|
-| `supabase/functions/_shared/liff-verify.ts` | + `resolveLineUserId()` + `AuthResult` type (sa_ JWT verify, LINE-token flag, dev sandbox) |
-| `supabase/functions/{transcribe,ask,save-memory,patch-note}/index.ts` | แทน block `if (liffToken)` ด้วย `resolveLineUserId()` (เรียกหลังสร้าง supabase client) |
+| `supabase/functions/_shared/liff-verify.ts` | + `resolveLineUserId()` + `AuthResult` (sa_ JWT verify, `REQUIRE_LINE_TOKEN` flag `.trim()`, dev sandbox) |
+| `supabase/functions/transcribe/index.ts` | ใช้ `resolveLineUserId()`; fix null-collapse (`planLimits = PLAN_LIMITS[plan] ?? free` → recLimit/suggestLimit/retentionDays) |
+| `supabase/functions/ask/index.ts` | ใช้ `resolveLineUserId()`; fix null-collapse (askLimit) |
+| `supabase/functions/save-memory/index.ts` | ใช้ `resolveLineUserId()` |
+| `supabase/functions/patch-note/index.ts` | ใช้ `resolveLineUserId()` |
 | `supabase/functions/set-webhook/index.ts` | **ไฟล์ใหม่** — ดึง source จาก deployed function |
-| `app/public/{manifest.json,sw.js}`, `nginx.conf`, `scripts/setup-rich-menu.mjs`, `.gitignore` | commit งานค้าง 2026-06-12 |
+| `app/src/lib/export.ts` | + `isLineInApp()`, `toBase64()`, `externalDownload()` (liff.openWindow + BOM), `showContentOverlay()`; ลบ navigator.share path; desktop download + BOM |
+| `app/src/lib/liff.ts` | + `openExternalBrowser()` (liff.openWindow external:true) |
+| `app/public/download.html` | **ไฟล์ใหม่** — static page decode fragment → download (txt/md + BOM) / print (pdf) |
+| `app/public/sw.js` | เปลี่ยนเป็น **self-destruct** SW (clear caches + unregister + reload) |
+| `app/index.html` | ลบ SW registration → unregister SW เดิม |
+| `app/Dockerfile` | **ไฟล์ใหม่** — Z-Node ใช้แทน Dockerfile.znode; nginx cache headers (assets immutable + `=404`, shell no-cache) |
+| `app/src/pages/RecordingsPage.tsx` | ลบปุ่ม PDF + import `exportPdf` |
+| `app/public/manifest.json`, `nginx.conf`, `scripts/setup-rich-menu.mjs`, `.gitignore` | commit งานค้าง 2026-06-12 |
+| `Z-Node DB (znodedb.projects)` | `deployBranch` admin→main; `githubToken`=NULL (project `cmpi2lktj0000j29w86sna6ne`) |
+| `GitHub repo webhook` | สร้าง hook id `644333393` → `auto.z-node.cc/api/webhooks/github` |
+| Supabase secret | `REQUIRE_LINE_TOKEN` = false (เคย set true ระหว่างทดสอบ) |
 
 ---
 
@@ -831,22 +862,21 @@ LINE in-app browser ละเลย `<a download>` + `window.open('_blank')` ค
 - pro: recording นับสะสม **ตลอดชีพ** (cap 2500), ask/suggest = ∞
 - UI: ตรวจ label "/ปี" (starter), "(ตลอดชีพ)" (pro), header period ตามแผน
 
-### 🟡 ทดสอบ Export บนมือถือ (LINE)
-- กด .txt/.md → ควรขึ้น share sheet หรือ "คัดลอกเนื้อหาแล้ว ✓"
-- ถ้าอยากได้ไฟล์จริง → เปิดในเบราว์เซอร์ภายนอก (⋮ → เปิดในเบราว์เซอร์)
+### 🟢 ทดสอบ Export บนมือถือ (LINE) — เสร็จแล้ว (2026-06-20)
+- .txt/.md → เปิดเบราว์เซอร์ภายนอก (liff.openWindow) → ดาวน์โหลดไฟล์จริง + ภาษาไทยอ่านออก (BOM) ✅
+- PDF ซ่อนแล้ว (layout เพี้ยนบนมือถือ)
 
-### 🟢 auth gap (optional liffToken) — เสร็จแล้ว (2026-06-20)
-- `resolveLineUserId()` ปิด gap: `sa_<uuid>` บังคับ verify session JWT เสมอ; `U<32>` ไม่มี token → reject เมื่อ `REQUIRE_LINE_TOKEN=true`
-- **Secret `REQUIRE_LINE_TOKEN=true` set แล้ว** ✅ — verified production: `U<32>` ไม่มี token → 401, `dev_` → ผ่าน (ask + patch-note)
-- **⚠️ ต้องทดสอบ device จริงด่วน**: LINE user ต้องส่ง LIFF token ได้จริงใน LINE client ไม่งั้น live user ถูก lockout (rollback: secret = false)
-- โค้ดอ่าน flag แบบ `.trim().toLowerCase()` กัน whitespace ใน secret value
+### 🟡 เปิด `REQUIRE_LINE_TOKEN=true` อีกครั้ง (หลังยืนยัน LIFF token flow)
+- `resolveLineUserId()` ปิด gap: `sa_<uuid>` บังคับ verify session JWT เสมอ (ปิดถาวร); `U<32>` ไม่มี token → reject เมื่อ flag=true
+- **ตอนนี้ flag = `false`** (roll back ไประหว่าง stabilize white-screen) → LINE class ยังปลอม id ได้ถ้าไม่ส่ง token
+- **ก่อนเปิด true**: ทดสอบ device จริงว่า LINE client ส่ง LIFF token (`liff.getIDToken()`) ได้จริง อัดเสียง/ถาม AI ไม่ติด 401 → แล้วค่อย `npx supabase secrets set REQUIRE_LINE_TOKEN=true` + redeploy transcribe/ask/save-memory/patch-note
+- โค้ดอ่าน flag แบบ `.trim().toLowerCase()` กัน whitespace
 
 ### 🟢 set-webhook source — เสร็จแล้ว (2026-06-20)
 - ดึง source เข้า repo: `supabase/functions/set-webhook/index.ts` (one-shot util ตั้ง LINE webhook endpoint URL)
 
-### 🔴 ยืนยัน VITE_LIFF_ID ใน Coolify build args
-- ถ้า build arg หายไป → `LIFF_ENABLED=false` → LINE login ไม่ทำงาน → white screen
-- ตรวจสอบ: Coolify → TanNote service → Environment Variables → `VITE_LIFF_ID=2010157477-I2NTp3zI`
+### 🟢 VITE_LIFF_ID build arg — หายห่วง (2026-06-20)
+- **ไม่ใช่ Coolify** — server ใช้ Z-Node; VITE_* อยู่ใน `/opt/projects/tannote/app/.env.production` (committed ใน repo ด้วย) → Vite bake ตอน build ครบ (ยืนยัน anon key + LIFF id ใน bundle แล้ว)
 
 ### 🟢 LINE Rich Menu ใหม่ — เสร็จแล้ว
 - `richmenu-63977447feea57f4299a347397f3adf3` — 1-ปุ่ม TanNote logo (แดง + ไมค์ + REC + TanNote) ✅
@@ -879,8 +909,10 @@ LINE in-app browser ละเลย `<a download>` + `window.open('_blank')` ค
 | ไมโครโฟน ถามทุก session | Android WebView ไม่ persist mic permission ข้าม session — OS limitation | แก้ไม่ได้ใน code; user กด "อนุญาตเฉพาะครั้งนี้" ทุกครั้งที่เปิด LINE ใหม่ |
 | ระบบชำระเงิน auto-verify ยังไม่มี | ปัจจุบัน manual verify ผ่าน LINE + admin panel; auto-webhook เป็น optional อนาคต | integrate payment webhook ถ้าต้องการ scale |
 | LIFF token เป็น `null` นอก LINE client | `liff.getIDToken()` คืน null เมื่อเปิดในเบราว์เซอร์ปกติ — fallback ไปใช้ `x-line-user-id` จาก localStorage | ยอมรับ: browser testing ใช้ `dev_xxx` fallback; production ใช้ผ่าน LINE เท่านั้น |
-| `VITE_LIFF_ID` Coolify build arg ยังไม่ได้ยืนยัน | ถ้า build arg ไม่ถูก set → `LIFF_ENABLED=false` → LINE users เห็น LoginPage ไม่มีปุ่ม LINE login → ติดอยู่หน้า login | ตรวจสอบ Coolify → TanNote service → Environment Variables (Build args) ว่ามี `VITE_LIFF_ID=2010157477-I2NTp3zI` |
-| Export ไฟล์จริงบน LINE WebView | iOS WKWebView ไม่ support file share + บล็อก download → ได้แค่แชร์ข้อความ/คัดลอก clipboard | เปิดในเบราว์เซอร์ภายนอก (⋮ → เปิดในเบราว์เซอร์) แล้ว download ตรง ๆ ได้; โค้ดมี fallback clipboard ให้แล้ว |
-| PDF บน LINE WebView | `iframe.print()` อาจไม่ทำงานใน WebView (โดยเฉพาะ iOS) | fallback แชร์เป็นไฟล์ .html; หรือเปิดในเบราว์เซอร์ภายนอกแล้วสั่งพิมพ์ → Save as PDF |
-| ~~auth gap: optional liffToken~~ | **แก้แล้ว 2026-06-20** — `resolveLineUserId()`: sa_ verify JWT เสมอ, U<32> ต้องมี token เมื่อ `REQUIRE_LINE_TOKEN=true` | เหลือ set secret `REQUIRE_LINE_TOKEN=true` หลัง device test |
+| ~~VITE_LIFF_ID Coolify build arg~~ | **หายห่วง 2026-06-20** — server เป็น Z-Node ไม่ใช่ Coolify; VITE_* อยู่ใน committed `app/.env.production` → bake ครบ | — |
+| ~~Export ไฟล์จริงบน LINE WebView~~ | **แก้แล้ว 2026-06-20** — `liff.openWindow(external:true)` → download.html ในเบราว์เซอร์ภายนอก + BOM | .txt/.md ดาวน์โหลดได้จริง ไทยอ่านออก ✅ |
+| PDF export | layout เพี้ยนบนมือถือ (print บีบคอลัมน์) → **ซ่อนปุ่มไว้** | `exportPdf` ยังอยู่ใน `export.ts`; ถ้าจะเปิดใหม่ต้องแก้ CSS print ก่อน |
+| ~~auth gap: optional liffToken~~ | **แก้แล้ว 2026-06-20** — `resolveLineUserId()`: sa_ verify JWT เสมอ (ปิดถาวร), U<32> ต้องมี token เมื่อ `REQUIRE_LINE_TOKEN=true` | **ตอนนี้ flag=false** (roll back) → เหลือเปิด true หลัง device test |
+| Z-Node webhook deploy ไม่ decrypt | `runProductionDeploy` ใช้ `githubToken`/`envVars` แบบ encrypted → ถ้าแก้ env ผ่าน Z-Node dashboard จะ re-encrypt + คืน token → auto-deploy พัง | set `githubToken`=NULL + envVars plaintext ใน DB อีกครั้ง (repo public ไม่ต้องใช้ token); หรือแก้โค้ด platform ให้ decrypt |
+| Device ที่ค้าง cache เก่า | HTTP cache เก่า (ก่อนใส่ no-cache headers) อาจยังค้างในบางเครื่อง | ปิด LINE สนิท+เปิดใหม่ 1 ครั้ง / clear cache (เกิดครั้งเดียว — no-cache + self-destruct SW กันซ้ำแล้ว) |
 | Quota: pro/extra user เดิม bucket รีเซ็ต | เปลี่ยน period key → lifetime bucket เริ่มที่ 0 (usage รายเดือนเก่าไม่ถูกนับต่อ) | ยอมรับได้ — extra=∞ ไม่กระทบ, pro = generous (ได้ 2500 เต็มนับจากนี้) |
