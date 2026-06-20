@@ -212,7 +212,7 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 - **LINE Rich Menu**: `richmenu-63977447feea57f4299a347397f3adf3` — 1-ปุ่ม TanNote logo, set เป็น default ✅ (2026-06-12)
 - **LIFF**: Published ✅ (2026-06-11) — endpoint URL: `https://tannote.z-node.cc/` (เปลี่ยนกลับจาก `/app` เมื่อ 2026-06-12)
 - **SMTP**: Resend — smtp.resend.com:465, sender: `onboarding@resend.dev`
-- **Migrations applied**: ทั้งหมดถึง `20260620000004_revoke_admin_rpcs.sql` ✅ (06-20: plan_expires, payment_slips bucket, payment_requests, revoke admin RPCs)
+- **Migrations applied**: ทั้งหมดถึง `20260620000006_pro_monthly.sql` ✅ (06-20: plan_expires, payment_slips bucket, payment_requests, revoke admin RPCs, starter→monthly, pro→monthly)
 
 ---
 
@@ -330,6 +330,16 @@ LINE in-app browser ไม่มี download handler → download ตรงๆ �
 ### 🟢 set-webhook source เข้า repo
 - `npx supabase functions download set-webhook` → `supabase/functions/set-webhook/index.ts` (one-shot util ตั้ง LINE webhook endpoint URL); track ใน repo แล้ว
 
+### 🟢 ทดสอบ flow บน device จริง — ผ่านหมด
+- 3A LINE Reminder (นัดหมาย → Flex มาตามเวลา) ✅
+- 3B หน้ารายการ ค้นหา/กรอง/จัดกลุ่ม ✅
+- LIFF token ผ่าน LINE (อัด/ถาม ไม่ติด 401 ตอน `REQUIRE_LINE_TOKEN=true`) ✅
+
+### 🟢 vybe.md — สเปคโปรเจกต์ใหม่ (VYBE)
+- คุยแผนสร้าง **VYBE** = English/international fork ของ TanNote (ไม่มี LINE, PWA, Stripe, Supabase Cloud, web push+email)
+- สร้าง `vybe.md` (root) — blueprint ครบ: reuse vs rebuild, platform layer, pricing, phases, **บทเรียนจาก TanNote 10 ข้อ**, checklist ก่อนเริ่ม
+- ยังไม่เริ่มสร้าง — รอเคาะ โดเมน/ราคา/accounts
+
 ### Git commits วันนี้ (push origin/main ทั้งหมด ✅)
 | commit | เนื้อหา |
 |---|---|
@@ -349,7 +359,10 @@ LINE in-app browser ไม่มี download handler → download ตรงๆ �
 | `4b9a277` | หน้ารายการ: ค้นหา + กรองแท็ก/ประเภท + จัดกลุ่มตามวัน |
 | `89eba0f` | Payment: forward สลิปให้ admin LINE |
 | `0098cde` | Payment approval queue + fix admin RPC anon leak |
-| `e27f2ef`/`4e07dea`/`d98e2e9`/`aa02c5c`/`42ba164`/`f02106f`/`db57200` | CLAUDE.md updates |
+| `0f17dbc`+enable | `REQUIRE_LINE_TOKEN=true` เปิด + verified บน device (auth gap ปิดครบ) |
+| `b951e1a` | Starter → รายเดือน (quota + อายุ 1 เดือน) |
+| `249b9d6` | Pro → รายเดือน (เหลือ extra อย่างเดียวที่ lifetime) |
+| `e27f2ef`/`4e07dea`/`d98e2e9`/`aa02c5c`/`42ba164`/`f02106f`/`db57200`/`a3ab918`/`41b5efb`/`9114037`/`ba527b5` | CLAUDE.md updates |
 
 ### ไฟล์ที่แก้ไขวันนี้ (2026-06-20)
 | ไฟล์ | สิ่งที่เปลี่ยน |
@@ -378,10 +391,16 @@ LINE in-app browser ไม่มี download handler → download ตรงๆ �
 | `supabase/migrations/20260620000002_payment_slips_bucket.sql` | **ใหม่** — public bucket `payment-slips` |
 | `supabase/migrations/20260620000003_payment_requests.sql` | **ใหม่** — table + `create_payment_request` + `admin_list_payment_requests` |
 | `supabase/migrations/20260620000004_revoke_admin_rpcs.sql` | **ใหม่** — revoke admin list RPCs จาก anon (security) |
+| `supabase/migrations/20260620000005_starter_monthly.sql` | **ใหม่** — `period_for_plan` starter → รายเดือน |
+| `supabase/migrations/20260620000006_pro_monthly.sql` | **ใหม่** — `period_for_plan` pro → รายเดือน (เหลือ extra lifetime) |
+| `app/src/config/plans.ts`, `app/src/pages/PricingPage.tsx`, `_shared/plans.ts` | starter+pro → รายเดือน: `quotaPeriodLabel`/`formatLimit`/`periodForPlan` (แยก pro ออกจาก extra) |
+| `app/src/pages/AdminPage.tsx`, `app/src/components/UsageIndicator.tsx` | `computePlanExpiry`/header/expiryStatus → starter+pro +1เดือน; dropdown labels |
+| `supabase/functions/admin-api/index.ts` | `autoPlanExpiry` starter+pro → +1 เดือน |
+| `vybe.md` | **ไฟล์ใหม่** — สเปคโปรเจกต์ VYBE (English fork) |
 | `app/public/manifest.json`, `nginx.conf`, `scripts/setup-rich-menu.mjs`, `.gitignore` | commit งานค้าง 2026-06-12 |
 | `Z-Node DB (znodedb.projects)` | `deployBranch` admin→main; `githubToken`=NULL (project `cmpi2lktj0000j29w86sna6ne`) |
 | `GitHub repo webhook` | สร้าง hook id `644333393` → `auto.z-node.cc/api/webhooks/github` |
-| Supabase secret | `REQUIRE_LINE_TOKEN` = false (เคย set true ระหว่างทดสอบ) |
+| Supabase secret | `REQUIRE_LINE_TOKEN` = **true** (verified บน device) |
 
 ---
 
@@ -918,10 +937,14 @@ LINE in-app browser ละเลย `<a download>` + `window.open('_blank')` ค
 - โครง `payment_requests` รองรับแล้ว: เปลี่ยนจาก admin กดอนุมัติ → auto-approve เมื่อ API ยืนยันสลิป (ยอดตรง + บัญชีถูก + เลขอ้างอิงไม่ซ้ำ)
 - ต้องสมัคร API (EasySlip มี free tier) + เก็บ transRef กันสลิปซ้ำ
 
-### 🟡 ทดสอบ Quota period ใหม่บน device จริง
-- starter: ใช้จนเกิน → ต้องเต็มแบบ **รายปี** (ไม่รีเซ็ตเดือนหน้า)
-- pro: recording นับสะสม **ตลอดชีพ** (cap 2500), ask/suggest = ∞
-- UI: ตรวจ label "/ปี" (starter), "(ตลอดชีพ)" (pro), header period ตามแผน
+### 🟡 ทดสอบ Quota/แพลน รายเดือน บน device จริง (หลังเปลี่ยน starter+pro เป็นรายเดือน)
+- starter: 800น./เดือน, pro: 2500น./เดือน + ask/suggest ∞, extra: ∞ ตลอดชีพ
+- assign starter/pro ใน Admin → การ์ดแผนขึ้น "ครบกำหนด <อีก 1 เดือน> · เหลือ ~30 วัน" + label "/ด."
+- Plan enforcement: free quota ครบ → 402 → PaymentModal เด้ง
+
+### 🔵 VYBE — โปรเจกต์ใหม่ (English/international fork) — ดู `vybe.md`
+- fork แยกขาด: ไม่มี LINE, PWA, Stripe, Supabase Cloud, Google+Email auth, web push+email
+- รอเคาะ: โดเมน, quota/ราคา final, accounts (Stripe/Supabase/VAPID/Resend) → แล้วเริ่ม Phase 0 ใน repo ใหม่
 
 ### 🟢 ทดสอบ Export บนมือถือ (LINE) — เสร็จแล้ว (2026-06-20)
 - .txt/.md → เปิดเบราว์เซอร์ภายนอก (liff.openWindow) → ดาวน์โหลดไฟล์จริง + ภาษาไทยอ่านออก (BOM) ✅
