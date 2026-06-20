@@ -189,14 +189,36 @@ Deno.serve(async (req: Request) => {
           .maybeSingle();
         const who     = prof?.display_name || prof?.nickname || "(ไม่ทราบชื่อ)";
         const planNow = prof?.plan ? `\nแผนปัจจุบัน: ${prof.plan}` : "";
-        const notice  = `💰 มีแจ้งชำระเงิน!\n\nจาก: ${who}${planNow}\nLINE ID: ${lineUserId}\n\n→ ตรวจสลิป แล้วเปลี่ยน plan ที่ Admin Panel`;
 
         if (msgType === "image") {
           const slipUrl = await uploadSlip(supabase, event.message?.id as string, lineUserId);
+
+          // Attach the slip to the latest pending payment request (create one if none)
+          const { data: pr } = await supabase
+            .from("payment_requests")
+            .select("id, plan, amount")
+            .eq("line_user_id", lineUserId)
+            .eq("status", "pending")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (pr) {
+            await supabase.from("payment_requests").update({ slip_url: slipUrl }).eq("id", pr.id);
+          } else if (prof) {
+            const { data: nodeRow } = await supabase.from("users_profile").select("node_id").eq("line_user_id", lineUserId).maybeSingle();
+            if (nodeRow?.node_id) await supabase.from("payment_requests").insert({ node_id: nodeRow.node_id, line_user_id: lineUserId, slip_url: slipUrl });
+          }
+
+          const wants = pr?.plan
+            ? `\n🎯 ขอแผน: ${String(pr.plan).toUpperCase()}${pr.amount ? ` (฿${pr.amount})` : ""}`
+            : "\n🎯 ขอแผน: (ไม่ระบุ — เลือกในแผงอนุมัติ)";
+          const notice = `💰 มีแจ้งชำระเงิน!\n\nจาก: ${who}${planNow}${wants}\n\n→ อนุมัติได้เลยที่ Admin Panel (แผง "รออนุมัติ")`;
+
           if (slipUrl) await pushImage(ADMIN_LINE_ID, slipUrl, notice);
-          else         await pushText(ADMIN_LINE_ID, `${notice}\n\n📷 (ดึงรูปสลิปไม่สำเร็จ — ขอสลิปจาก user โดยตรง)`);
+          else         await pushText(ADMIN_LINE_ID, `${notice}\n\n📷 (ดึงรูปสลิปไม่สำเร็จ)`);
         } else {
-          await pushText(ADMIN_LINE_ID, `${notice}\n\n💬 "${msgText.slice(0, 80)}"`);
+          const notice = `💬 ข้อความจาก: ${who}${planNow}\nLINE ID: ${lineUserId}`;
+          await pushText(ADMIN_LINE_ID, `${notice}\n\n"${msgText.slice(0, 80)}"`);
         }
       }
       continue;

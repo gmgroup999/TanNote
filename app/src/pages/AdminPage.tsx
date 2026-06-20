@@ -81,9 +81,24 @@ async function callAdmin(session: Session, body: Record<string, unknown>) {
   return json;
 }
 
+interface PaymentRequest {
+  id: string;
+  line_user_id: string;
+  plan: string | null;
+  amount: number | null;
+  slip_url: string | null;
+  created_at: string;
+  display_name: string | null;
+  nickname: string | null;
+  picture_url: string | null;
+  current_plan: string | null;
+}
+
 export default function AdminPage({ session }: { session: Session }) {
   const [users,   setUsers]   = useState<AdminUser[]>([]);
   const [stats,   setStats]   = useState<Stats | null>(null);
+  const [pending, setPending] = useState<PaymentRequest[]>([]);
+  const [chosen,  setChosen]  = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [search,  setSearch]  = useState('');
   const [planFilter, setPlanFilter] = useState<string>('all');
@@ -94,12 +109,14 @@ export default function AdminPage({ session }: { session: Session }) {
     setLoading(true);
     setError(null);
     try {
-      const [usersRes, statsRes] = await Promise.all([
+      const [usersRes, statsRes, pendingRes] = await Promise.all([
         callAdmin(session, { action: 'list_users' }),
         callAdmin(session, { action: 'get_stats'  }),
+        callAdmin(session, { action: 'list_payment_requests' }),
       ]);
       setUsers((usersRes.users as AdminUser[]) ?? []);
       setStats(statsRes as unknown as Stats);
+      setPending((pendingRes.requests as PaymentRequest[]) ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'โหลดไม่ได้');
     } finally {
@@ -108,6 +125,30 @@ export default function AdminPage({ session }: { session: Session }) {
   }
 
   useEffect(() => { load(); }, []);
+
+  async function approveRequest(req: PaymentRequest) {
+    const plan = chosen[req.id] ?? req.plan ?? 'starter';
+    if (!confirm(`อนุมัติ ${req.display_name || req.nickname || req.line_user_id} → แผน ${plan.toUpperCase()}?`)) return;
+    setActionLoading(req.id + '_approve');
+    try {
+      await callAdmin(session, { action: 'approve_payment_request', requestId: req.id, plan });
+      setPending((prev) => prev.filter((p) => p.id !== req.id));
+      load();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด');
+    } finally { setActionLoading(null); }
+  }
+
+  async function rejectRequest(req: PaymentRequest) {
+    if (!confirm('ปฏิเสธคำขอนี้?')) return;
+    setActionLoading(req.id + '_reject');
+    try {
+      await callAdmin(session, { action: 'reject_payment_request', requestId: req.id });
+      setPending((prev) => prev.filter((p) => p.id !== req.id));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด');
+    } finally { setActionLoading(null); }
+  }
 
   async function updatePlan(userId: string, plan: string) {
     setActionLoading(userId + '_plan');
@@ -217,6 +258,67 @@ export default function AdminPage({ session }: { session: Session }) {
                 <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">{count}</span>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Payment approval queue */}
+        {pending.length > 0 && (
+          <div className="bg-white dark:bg-[#252527] rounded-2xl border-2 border-[#E24B4A]/40 shadow-sm p-4 flex flex-col gap-3">
+            <p className="text-sm font-bold text-[#E24B4A]">💰 รออนุมัติ ({pending.length})</p>
+            {pending.map((req) => {
+              const name = req.display_name || req.nickname || '(ไม่ทราบชื่อ)';
+              const planVal = chosen[req.id] ?? req.plan ?? 'starter';
+              return (
+                <div key={req.id} className="flex gap-3 border-t border-gray-100 dark:border-[#333336] pt-3">
+                  {req.picture_url ? (
+                    <img src={req.picture_url} alt="" className="w-12 h-12 rounded-full flex-shrink-0 object-cover" />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full flex-shrink-0 bg-[#E24B4A]/10 flex items-center justify-center text-[#E24B4A] font-bold">{name[0]}</div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">{name}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      ขอแผน: <b className="text-[#E24B4A]">{req.plan ? req.plan.toUpperCase() : '— (เลือกเอง)'}</b>
+                      {req.amount ? ` · ฿${req.amount}` : ''} · ปัจจุบัน: {req.current_plan ?? '-'}
+                    </p>
+                    <p className="text-[10px] text-gray-400 dark:text-gray-600">{new Date(req.created_at).toLocaleString('th-TH')}</p>
+                    {req.slip_url ? (
+                      <a href={req.slip_url} target="_blank" rel="noreferrer">
+                        <img src={req.slip_url} alt="slip" className="mt-2 max-h-44 rounded-lg border border-gray-200 dark:border-[#444448]" />
+                      </a>
+                    ) : (
+                      <p className="text-[11px] text-amber-600 mt-1">⏳ ยังไม่ได้รับสลิป</p>
+                    )}
+                    <div className="flex gap-2 mt-2 items-center flex-wrap">
+                      <select
+                        value={planVal}
+                        onChange={(e) => setChosen((p) => ({ ...p, [req.id]: e.target.value }))}
+                        className="rounded-lg border border-gray-200 dark:border-[#444448] bg-white dark:bg-[#252527] text-gray-700 dark:text-gray-300 px-2 py-1.5 text-xs focus:outline-none"
+                      >
+                        <option value="starter">Starter</option>
+                        <option value="pro">Pro</option>
+                        <option value="extra">Extra</option>
+                        <option value="free">Free</option>
+                      </select>
+                      <button
+                        onClick={() => approveRequest(req)}
+                        disabled={actionLoading === req.id + '_approve'}
+                        className="text-xs font-semibold text-white bg-[#E24B4A] hover:bg-[#cf3f3e] rounded-lg px-3 py-1.5 disabled:opacity-60"
+                      >
+                        ✓ อนุมัติ {planVal.toUpperCase()}
+                      </button>
+                      <button
+                        onClick={() => rejectRequest(req)}
+                        disabled={actionLoading === req.id + '_reject'}
+                        className="text-xs text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-[#444448] rounded-lg px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-[#333336] disabled:opacity-60"
+                      >
+                        ✗ ปฏิเสธ
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 

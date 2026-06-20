@@ -156,6 +156,67 @@ Deno.serve(async (req: Request) => {
       return respond({ ok: true });
     }
 
+    // ── list_payment_requests ──────────────────────────────────────────────────
+    if (body.action === "list_payment_requests") {
+      const { data, error } = await svc.rpc("admin_list_payment_requests");
+      if (error) throw new Error(error.message);
+      return respond({ requests: data ?? [] });
+    }
+
+    // ── approve_payment_request ────────────────────────────────────────────────
+    if (body.action === "approve_payment_request") {
+      const { requestId, plan: overridePlan } = body as { requestId?: string; plan?: string };
+      if (!requestId) return respond({ error: "requestId ต้องระบุ" }, 400);
+
+      const { data: reqRow } = await svc
+        .from("payment_requests")
+        .select("line_user_id, plan, status")
+        .eq("id", requestId)
+        .maybeSingle();
+      if (!reqRow) return respond({ error: "ไม่พบคำขอ" }, 404);
+
+      const plan = overridePlan ?? reqRow.plan;
+      if (!plan || !VALID_PLANS.includes(plan))
+        return respond({ error: "ต้องระบุแพลน (free/starter/pro/extra)" }, 400);
+
+      const plan_expires_at = autoPlanExpiry(plan);
+      const { error: upErr } = await svc
+        .from("users_profile")
+        .update({ plan, plan_expires_at })
+        .eq("line_user_id", reqRow.line_user_id);
+      if (upErr) throw new Error(upErr.message);
+
+      await svc.from("payment_requests")
+        .update({ status: "approved", plan, decided_at: new Date().toISOString() })
+        .eq("id", requestId);
+
+      // Notify the user on LINE (best-effort)
+      const lineToken = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN");
+      if (lineToken && /^U[a-zA-Z0-9]{32}$/.test(reqRow.line_user_id)) {
+        await fetch("https://api.line.me/v2/bot/message/push", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${lineToken}` },
+          body: JSON.stringify({
+            to: reqRow.line_user_id,
+            messages: [{ type: "text", text: `🎉 อัปเกรดเป็นแผน ${plan.toUpperCase()} เรียบร้อยแล้ว!\nขอบคุณที่ใช้งาน TanNote ค่ะ 🙏` }],
+          }),
+        }).catch(() => {});
+      }
+
+      return respond({ ok: true, plan, plan_expires_at });
+    }
+
+    // ── reject_payment_request ─────────────────────────────────────────────────
+    if (body.action === "reject_payment_request") {
+      const { requestId } = body as { requestId?: string };
+      if (!requestId) return respond({ error: "requestId ต้องระบุ" }, 400);
+      const { error } = await svc.from("payment_requests")
+        .update({ status: "rejected", decided_at: new Date().toISOString() })
+        .eq("id", requestId);
+      if (error) throw new Error(error.message);
+      return respond({ ok: true });
+    }
+
     return respond({ error: "Unknown action" }, 400);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาด";

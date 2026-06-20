@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { getLiffUserId, getLiffDisplayName } from '../lib/liff';
+import { createPaymentRequest } from '../lib/api';
 import { PLAN_INFO, EARLY_BIRD_TOTAL, EARLY_BIRD_TAKEN, type Plan } from '../config/plans';
 
 const EARLY_BIRD_ACTIVE = EARLY_BIRD_TOTAL - EARLY_BIRD_TAKEN > 0;
@@ -15,6 +16,9 @@ export default function PaymentModal({ plan, onClose }: Props) {
 
   const info  = PLAN_INFO[plan];
   const price = EARLY_BIRD_ACTIVE && info.earlyBirdPrice ? info.earlyBirdPrice : info.price;
+
+  // Record the upgrade intent so the slip can be matched to this user + plan.
+  useEffect(() => { createPaymentRequest(plan, price); }, [plan, price]);
   const userId      = getLiffUserId() || '';
   const displayName = getLiffDisplayName() || '';
   const memo = `TanNote ${info.label}${displayName ? ` (${displayName})` : ''}`;

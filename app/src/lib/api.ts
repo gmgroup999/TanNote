@@ -444,6 +444,20 @@ export async function fetchUsage(): Promise<UsageSummary | null> {
   return (await res.json()) as UsageSummary | null;
 }
 
+/** Record an upgrade intent so the admin can approve the right user/plan. */
+export async function createPaymentRequest(plan: string, amount: number): Promise<void> {
+  if (!isSupabaseReady()) return;
+  const lineUserId = getLiffUserId();
+  await fetch(
+    `${SUPABASE_URL}/rest/v1/rpc/create_payment_request`,
+    {
+      method:  "POST",
+      headers: { apikey: SUPABASE_ANON, "Content-Type": "application/json" },
+      body:    JSON.stringify({ p_line_user_id: lineUserId, p_plan: plan, p_amount: amount }),
+    },
+  ).catch(() => {});
+}
+
 export async function saveCloudBackupEnabled(enabled: boolean): Promise<void> {
   if (!isSupabaseReady()) return;
   const lineUserId = getLiffUserId();
