@@ -94,19 +94,6 @@ const NAV_ITEMS = [
     ),
   },
   {
-    id: 'graph' as Tab,
-    label: 'กราฟ',
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <circle cx="5"  cy="12" r="2" fill="currentColor" stroke="none" />
-        <circle cx="19" cy="5"  r="2" fill="currentColor" stroke="none" />
-        <circle cx="19" cy="19" r="2" fill="currentColor" stroke="none" />
-        <line x1="7"  y1="11.3" x2="17" y2="6"  strokeLinecap="round" />
-        <line x1="7"  y1="12.7" x2="17" y2="18" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
     id: 'ask' as Tab,
     label: 'ถาม AI',
     icon: (
