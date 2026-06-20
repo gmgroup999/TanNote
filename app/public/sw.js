@@ -1,53 +1,20 @@
-// TanNote Service Worker — cache-first for static assets, network-first for API
-const CACHE = 'tannote-v3';
+// TanNote Service Worker — SELF-DESTRUCT.
+// The previous cache-first SW caused stale app shells (cached index.html
+// pointing to old, now-404 asset hashes) → white screen after deploys.
+// This version unregisters itself and clears all caches so every device
+// returns to plain network loading. Cache correctness is now handled by
+// HTTP Cache-Control headers (see app/Dockerfile), not a service worker.
+self.addEventListener('install', () => self.skipWaiting());
 
-const PRECACHE = [
-  '/',
-  '/manifest.json',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-];
-
-self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting())
-  );
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => caches.delete(k)));
+    await self.registration.unregister();
+    const clients = await self.clients.matchAll({ type: 'window' });
+    clients.forEach((c) => c.navigate(c.url));
+  })());
 });
 
-self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
-    ).then(() => self.clients.claim())
-  );
-});
-
-self.addEventListener('fetch', (e) => {
-  const url = new URL(e.request.url);
-
-  // Pass through Supabase API calls + non-GET
-  if (e.request.method !== 'GET') return;
-  if (url.hostname.includes('supabase.co')) return;
-
-  // Network-first for HTML navigation (SPA shell)
-  if (e.request.mode === 'navigate') {
-    e.respondWith(
-      fetch(e.request).catch(() => caches.match('/'))
-    );
-    return;
-  }
-
-  // Cache-first for static assets (JS, CSS, images, fonts)
-  e.respondWith(
-    caches.match(e.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(e.request).then((res) => {
-        if (res.ok && url.origin === self.location.origin) {
-          const clone = res.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, clone));
-        }
-        return res;
-      });
-    })
-  );
-});
+// Pass through everything — no caching.
+self.addEventListener('fetch', () => {});

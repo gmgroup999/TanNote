@@ -41,10 +41,14 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
+      // Unregister any previously-installed service worker. The old cache-first
+      // SW caused stale app shells (white screen after deploys). Caching is now
+      // handled by HTTP Cache-Control headers instead. The published /sw.js also
+      // self-destructs, so existing installs clean themselves up.
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(() => {});
-        });
+        navigator.serviceWorker.getRegistrations?.().then((regs) => {
+          regs.forEach((r) => r.unregister());
+        }).catch(() => {});
       }
     </script>
   </body>
