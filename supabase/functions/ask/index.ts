@@ -95,7 +95,8 @@ Deno.serve(async (req: Request) => {
 
     // ── 2b. Check ask-notes quota ────────────────────────────────────────────
     const period   = periodForPlan(userPlan);
-    const askLimit = PLAN_LIMITS[userPlan]?.ask_notes ?? PLAN_LIMITS.free.ask_notes;
+    // Fall back to free only for UNKNOWN plans — keep intentional null (unlimited) for pro/extra
+    const askLimit = (PLAN_LIMITS[userPlan] ?? PLAN_LIMITS.free).ask_notes;
     if (userId && askLimit !== null) {
       const { data: usageRow } = await supabase
         .from("usage_tracking")

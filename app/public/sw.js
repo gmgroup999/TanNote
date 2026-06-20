@@ -1,5 +1,5 @@
 // TanNote Service Worker — cache-first for static assets, network-first for API
-const CACHE = 'tannote-v2';
+const CACHE = 'tannote-v3';
 
 const PRECACHE = [
   '/',

@@ -155,8 +155,10 @@ Deno.serve(async (req: Request) => {
 
     // ── 2b. Check recording + ai_suggest quotas (single DB query) ───────────
     const period       = periodForPlan(userPlan);
-    const recLimit     = PLAN_LIMITS[userPlan]?.recording_minutes ?? PLAN_LIMITS.free.recording_minutes;
-    const suggestLimit = PLAN_LIMITS[userPlan]?.ai_suggest        ?? PLAN_LIMITS.free.ai_suggest;
+    // Fall back to free only for UNKNOWN plans — keep intentional null (unlimited) for pro/extra
+    const planLimits   = PLAN_LIMITS[userPlan] ?? PLAN_LIMITS.free;
+    const recLimit     = planLimits.recording_minutes;
+    const suggestLimit = planLimits.ai_suggest;
     if (userId) {
       const { data: usageRow } = await supabase
         .from("usage_tracking")
@@ -181,7 +183,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── 3. Create note (status = processing) ────────────────────────────────
-    const retentionDays = PLAN_LIMITS[userPlan]?.text_retention_days ?? PLAN_LIMITS.free.text_retention_days;
+    const retentionDays = planLimits.text_retention_days;
     const expiresAt = retentionDays !== null
       ? new Date(Date.now() + retentionDays * 86400_000).toISOString()
       : null;

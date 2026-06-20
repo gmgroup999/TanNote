@@ -232,6 +232,14 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 - **Verified production**: `sa_` ไม่มี JWT → 401 "เซสชันไม่ถูกต้อง"; `dev_`/`U<32>` (flag off) → auth ผ่าน → 400 "ไม่มีคำถาม" ✅
 - Deploy: transcribe/ask/save-memory/patch-note redeployed 2026-06-20 ✅
 
+### 🔴 Bug Fix — extra/pro โดนลิมิตของ free (null-collapse)
+ผู้ใช้ extra รายงาน "extra แต่โดนลิมิต" — note ขึ้น error "โควต้า AI แนะนำแท็ก 5 ของแผน extra ครบแล้ว"
+- **Root cause**: `PLAN_LIMITS[plan]?.field ?? PLAN_LIMITS.free.field` — `??` มองค่า `null` (=unlimited ของ pro/extra) เป็น nullish เลย fallback ไปค่า free → extra ได้ ai_suggest=5, recording=60, retention=30วัน แทน ∞
+- **Fix**: fallback ที่ระดับ plan ไม่ใช่ระดับค่า → `(PLAN_LIMITS[plan] ?? PLAN_LIMITS.free).field` (free ใช้เฉพาะ plan ที่ไม่รู้จัก, คง null ไว้สำหรับ pro/extra)
+- จุดที่แก้: `transcribe` (recLimit, suggestLimit, retentionDays), `ask` (askLimit) — deploy ทั้งคู่ ✅
+- **หมายเหตุ**: SQL `get_current_usage`/`admin_list_users` ไม่มีบั๊กนี้ (ไม่คำนวณ limit; limit apply ฝั่ง client)
+- **Settings display "/ด." + "มิถุนายน"**: เป็น bundle เก่าค้าง cache บน device (production JS ปัจจุบันมี "ตลอดชีพ" ถูกแล้ว) → bump SW cache `v2`→`v3` บังคับ client โหลดใหม่
+
 ### 🔵 set-webhook source เข้า repo
 - `npx supabase functions download set-webhook` → `supabase/functions/set-webhook/index.ts` (one-shot util ตั้ง LINE webhook endpoint URL); track ใน repo แล้ว
 
