@@ -266,6 +266,18 @@ Frontend **ไม่ได้ deploy ผ่าน Coolify** — server ใช้
 - **ผลลัพธ์**: push → main = auto-deploy เอง (ใส่ `[skip deploy]` ใน commit msg = ข้าม)
 - **⚠️ ระวัง**: ถ้าแก้ env vars ผ่าน Z-Node dashboard มันจะ re-encrypt envVars + อาจ set githubToken กลับ → auto-deploy พังอีก (ต้อง null githubToken ใหม่)
 
+### 🔴 Bug Fix — จอขาว/เข้าแอปผ่าน LINE ไม่ได้ (stale cache + ไม่มี cache headers)
+อาการ: เปิดผ่าน LINE แล้ว **เข้าแอปไม่ได้** (จอขาว). nginx log เผยว่า device ขอ asset hash **เก่า** (`index-vCN5PL05.js`) ที่ถูกลบไปแล้ว → SPA fallback คืน `index.html` (text/html, 2605B) สำหรับ request `.js` → browser parse HTML เป็น JS → app ไม่ boot
+- **Root cause**: Z-Node generate nginx แบบ minimal **ไม่มี Cache-Control** → WebView cache `index.html` ค้าง → ชี้ asset hash เก่าที่ deploy ใหม่ลบทิ้ง
+- **Fix (permanent)**: เพิ่ม `app/Dockerfile` (Z-Node ใช้แทน Dockerfile.znode เพราะ `hasDockerfile`) — nginx: `/assets/*` immutable + **`=404` ถ้าไฟล์หาย** (ไม่ fallback เป็น HTML), ส่วน index.html/sw.js/manifest = `no-cache` (revalidate ทุกครั้ง → ได้ asset ใหม่เสมอ)
+- **Fix (recovery)**: `app/public/sw.js` เปลี่ยนเป็น **self-destruct** (clear caches + unregister + reload) + ลบ SW registration จาก `index.html` → device ที่ค้าง SW เก่าหายเอง; เลิกใช้ SW caching (ใช้ HTTP headers แทน)
+- **Verified prod**: index.html `no-cache`, asset `immutable`, old asset → **404**, sw.js = self-destruct ✅
+- **Device ที่ค้างอยู่แล้ว**: ต้องปิด LINE สนิท+เปิดใหม่ 1 ครั้ง (หรือ clear cache / เปิดเบราว์เซอร์ภายนอก) ให้ HTTP cache เก่าหลุด
+
+### 🟡 Roll back `REQUIRE_LINE_TOKEN=false`
+- กันเสี่ยง lock LINE user ออกระหว่าง stabilize (email gap ยังปิดอยู่ unconditionally) — redeploy transcribe/ask/save-memory/patch-note แล้ว
+- จะเปิด `true` อีกครั้งหลังยืนยัน LIFF token flow บน device จริง
+
 ### 🟢 set-webhook source เข้า repo
 - `npx supabase functions download set-webhook` → `supabase/functions/set-webhook/index.ts` (one-shot util ตั้ง LINE webhook endpoint URL); track ใน repo แล้ว
 
