@@ -35,7 +35,7 @@ interface AdminUser {
 
 /** Compute plan_expires_at when admin changes plan */
 function computePlanExpiry(plan: string): string | null {
-  if (plan === 'starter') {
+  if (plan === 'starter' || plan === 'pro') {
     const d = new Date();
     d.setMonth(d.getMonth() + 1); // monthly subscription
     return d.toISOString();
@@ -458,7 +458,7 @@ export default function AdminPage({ session }: { session: Session }) {
                   >
                     <option value="free">Free</option>
                     <option value="starter">Starter +1เดือน</option>
-                    <option value="pro">Pro ∞</option>
+                    <option value="pro">Pro +1เดือน</option>
                     <option value="extra">Extra ∞</option>
                   </select>
 

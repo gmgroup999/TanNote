@@ -9,8 +9,8 @@ const EARLY_BIRD_ACTIVE = EARLY_BIRD_LEFT > 0;
 function formatLimit(val: number | null, unitBase: string, plan: Plan): string {
   if (val === null) return `∞ ${unitBase}`;
   const n = val.toLocaleString();
-  if (plan === 'pro' || plan === 'extra') return `${n} ${unitBase} ตลอดชีพ`;
-  return `${n} ${unitBase}/ด.`; // free + starter = monthly
+  if (plan === 'extra') return `${n} ${unitBase} ตลอดชีพ`;
+  return `${n} ${unitBase}/ด.`; // free + starter + pro = monthly
 }
 
 function CheckRow({ label, available = true }: { label: string; available?: boolean }) {

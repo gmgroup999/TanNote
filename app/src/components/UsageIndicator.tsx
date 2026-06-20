@@ -40,9 +40,9 @@ function Bar({ label, used, limit, unit, plan }: {
 
 /** Human-readable plan expiry / renewal status. */
 function expiryStatus(plan: Plan, expiresAt: string | null): { text: string; warn: boolean } {
-  if (plan === 'pro' || plan === 'extra') return { text: 'ตลอดชีพ — ไม่มีวันหมดอายุ', warn: false };
+  if (plan === 'extra') return { text: 'ตลอดชีพ — ไม่มีวันหมดอายุ', warn: false };
   if (plan === 'free') return { text: 'ฟรี — ไม่มีวันหมดอายุ', warn: false };
-  // starter (yearly)
+  // starter + pro (monthly)
   if (!expiresAt) return { text: 'ไม่ระบุวันหมดอายุ', warn: false };
   const d = new Date(expiresAt);
   const dateStr = d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -96,7 +96,7 @@ export default function UsageIndicator({ onOpenPricing }: { onOpenPricing?: () =
           </span>
         </div>
         <span className="text-[10px] text-gray-400 dark:text-gray-600">
-          {(plan === 'pro' || plan === 'extra')
+          {plan === 'extra'
             ? 'ตลอดชีพ'
             : new Date().toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}
         </span>

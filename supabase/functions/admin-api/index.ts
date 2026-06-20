@@ -33,12 +33,12 @@ const VALID_PLANS = ["free", "starter", "pro", "extra"];
 
 /** Auto-calculate plan_expires_at based on plan type */
 function autoPlanExpiry(plan: string): string | null {
-  if (plan === "starter") {
+  if (plan === "starter" || plan === "pro") {
     const d = new Date();
     d.setMonth(d.getMonth() + 1); // monthly subscription
     return d.toISOString();
   }
-  return null; // free, pro, extra = no expiry
+  return null; // free, extra = no expiry
 }
 
 Deno.serve(async (req: Request) => {

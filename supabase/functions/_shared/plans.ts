@@ -31,8 +31,8 @@ export function currentPeriod(): string {
  * supabase/migrations (same output strings, Asia/Bangkok boundaries):
  *   free    → monthly  (YYYY-MM)
  *   starter → monthly  (YYYY-MM, 199/month, plan_expires_at = +1 month)
- *   pro     → lifetime (recording capped at 2500 total)
- *   extra   → lifetime (unlimited anyway)
+ *   pro     → monthly  (YYYY-MM, 399/month, plan_expires_at = +1 month, 2500min/month)
+ *   extra   → lifetime (unlimited, admin-only)
  */
 export function periodForPlan(plan: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -40,8 +40,8 @@ export function periodForPlan(plan: string): string {
   }).formatToParts(new Date());
   const y = parts.find((p) => p.type === "year")!.value;
   const m = parts.find((p) => p.type === "month")!.value;
-  if (plan === "pro" || plan === "extra") return "lifetime";
-  return `${y}-${m}`; // free + starter = monthly
+  if (plan === "extra") return "lifetime";
+  return `${y}-${m}`; // free + starter + pro = monthly
 }
 
 export function quotaExceededResponse(
