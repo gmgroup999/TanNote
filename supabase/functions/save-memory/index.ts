@@ -7,7 +7,7 @@
  */
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { verifyLiffToken } from "../_shared/liff-verify.ts";
+import { resolveLineUserId } from "../_shared/liff-verify.ts";
 
 const SUPABASE_URL    = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SVC    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -37,18 +37,14 @@ Deno.serve(async (req: Request) => {
     const value    = (body.value ?? "").trim();
     const source   = body.source ?? "confirmed";
 
-    const liffToken  = req.headers.get("x-liff-token");
-    let   lineUserId = req.headers.get("x-line-user-id") ?? "anonymous";
-
-    if (liffToken) {
-      const verified = await verifyLiffToken(liffToken, LINE_CHANNEL_ID);
-      if (!verified) return respond({ error: "LIFF token ไม่ถูกต้องหรือหมดอายุ" }, 401);
-      lineUserId = verified;
-    }
-
     if (!key || !value) return respond({ error: "key และ value ต้องไม่ว่าง" }, 400);
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SVC);
+
+    // Authenticate caller (LIFF token / email session JWT / sandbox)
+    const auth = await resolveLineUserId(req, supabase, LINE_CHANNEL_ID);
+    if (auth.error) return respond({ error: auth.error }, auth.status);
+    const lineUserId = auth.userId;
 
     // Get or create user
     const { data: userRow } = await supabase

@@ -21,7 +21,7 @@
 import { GoogleGenAI } from "npm:@google/genai";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { PLAN_LIMITS, SUPPORTED_LANGUAGES, periodForPlan, quotaExceededResponse } from "../_shared/plans.ts";
-import { verifyLiffToken } from "../_shared/liff-verify.ts";
+import { resolveLineUserId } from "../_shared/liff-verify.ts";
 
 // ─── Env ─────────────────────────────────────────────────────────────────────
 const GEMINI_API_KEY  = Deno.env.get("GEMINI_API_KEY")!;
@@ -117,17 +117,8 @@ Deno.serve(async (req: Request) => {
     const durationSec = Number(formData.get("duration_seconds") ?? 0);
     const localId     = (formData.get("local_audio_id") as string | null) ?? "";
     const language    = (formData.get("language") as string | null) ?? "th";
-    const liffToken    = req.headers.get("x-liff-token");
-    let   lineUserId   = req.headers.get("x-line-user-id") ?? "anonymous";
     const pictureUrl   = req.headers.get("x-line-picture-url")  ?? null;
     const displayName  = req.headers.get("x-line-display-name") ?? null;
-
-    // LIFF JWT verification — if token present, must be valid
-    if (liffToken) {
-      const verified = await verifyLiffToken(liffToken, LINE_CHANNEL_ID);
-      if (!verified) return respond({ error: "LIFF token ไม่ถูกต้องหรือหมดอายุ กรุณาเปิดแอปใหม่" }, 401);
-      lineUserId = verified;
-    }
 
     if (!audioFile || audioFile.size === 0) {
       return respond({ error: "ไม่พบไฟล์เสียง หรือไฟล์ว่างเปล่า" }, 400);
@@ -135,6 +126,11 @@ Deno.serve(async (req: Request) => {
 
     const ai        = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
     const supabase  = createClient(SUPABASE_URL, SUPABASE_SVC);
+
+    // Authenticate caller (LIFF token / email session JWT / sandbox)
+    const auth = await resolveLineUserId(req, supabase, LINE_CHANNEL_ID);
+    if (auth.error) return respond({ error: auth.error }, auth.status);
+    const lineUserId = auth.userId;
 
     // ── 2. Upsert user ──────────────────────────────────────────────────────
     const profilePatch: Record<string, unknown> = { node_id: NODE_ID, line_user_id: lineUserId };

@@ -14,7 +14,7 @@
 import { GoogleGenAI } from "npm:@google/genai";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { PLAN_LIMITS, periodForPlan, quotaExceededResponse } from "../_shared/plans.ts";
-import { verifyLiffToken } from "../_shared/liff-verify.ts";
+import { resolveLineUserId } from "../_shared/liff-verify.ts";
 
 // ─── Env ──────────────────────────────────────────────────────────────────────
 const GEMINI_API_KEY  = Deno.env.get("GEMINI_API_KEY")!;
@@ -63,20 +63,15 @@ Deno.serve(async (req: Request) => {
     const question   = (body.question ?? "").trim();
     const history    = body.history ?? [];
     const localNotes = body.local_notes ?? [];
-    const liffToken  = req.headers.get("x-liff-token");
-    let   lineUserId = req.headers.get("x-line-user-id") ?? "anonymous";
-
-    // LIFF JWT verification — if token present, must be valid
-    if (liffToken) {
-      const verified = await verifyLiffToken(liffToken, LINE_CHANNEL_ID);
-      if (!verified) return respond({ error: "LIFF token ไม่ถูกต้องหรือหมดอายุ กรุณาเปิดแอปใหม่" }, 401);
-      lineUserId = verified;
-    }
-
     if (!question) return respond({ error: "ไม่มีคำถาม" }, 400);
 
     const ai       = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
     const supabase = createClient(SUPABASE_URL, SUPABASE_SVC);
+
+    // Authenticate caller (LIFF token / email session JWT / sandbox)
+    const auth = await resolveLineUserId(req, supabase, LINE_CHANNEL_ID);
+    if (auth.error) return respond({ error: auth.error }, auth.status);
+    const lineUserId = auth.userId;
 
     // ── 2. Get/create user ───────────────────────────────────────────────────
     const { data: userRow } = await supabase

@@ -8,7 +8,7 @@
  */
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { verifyLiffToken } from "../_shared/liff-verify.ts";
+import { resolveLineUserId } from "../_shared/liff-verify.ts";
 
 const SUPABASE_URL    = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SVC    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -32,15 +32,6 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "PATCH") return respond({ error: "Method not allowed" }, 405);
 
   try {
-    const liffToken  = req.headers.get("x-liff-token");
-    let   lineUserId = req.headers.get("x-line-user-id") ?? "anonymous";
-
-    if (liffToken) {
-      const verified = await verifyLiffToken(liffToken, LINE_CHANNEL_ID);
-      if (!verified) return respond({ error: "LIFF token ไม่ถูกต้องหรือหมดอายุ" }, 401);
-      lineUserId = verified;
-    }
-
     const { note_id, title, recording_type, remove_tags } = await req.json() as {
       note_id: string;
       title?: string;
@@ -51,6 +42,11 @@ Deno.serve(async (req: Request) => {
     if (!note_id) return respond({ error: "note_id required" }, 400);
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SVC);
+
+    // Authenticate caller (LIFF token / email session JWT / sandbox)
+    const auth = await resolveLineUserId(req, supabase, LINE_CHANNEL_ID);
+    if (auth.error) return respond({ error: auth.error }, auth.status);
+    const lineUserId = auth.userId;
 
     // Verify ownership — note must belong to the requesting user
     const { data: noteOwner } = await supabase
