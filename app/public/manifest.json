@@ -2,7 +2,7 @@
   "name": "TanNote — AI Voice Note",
   "short_name": "TanNote",
   "description": "AI voice note ภาษาไทย — บันทึกเสียง AI ถอด สรุป แท็ก เชื่อมโยง",
-  "start_url": "/app",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
@@ -40,7 +40,7 @@
       "name": "บันทึกเสียง",
       "short_name": "บันทึก",
       "description": "เริ่มบันทึกเสียงทันที",
-      "url": "/app",
+      "url": "/",
       "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     }
   ]

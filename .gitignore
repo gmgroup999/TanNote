@@ -22,6 +22,9 @@ Thumbs.db
 # Claude Code settings (may contain tokens)
 .claude/
 
+# Generated files
+scripts/tannote-rich-menu.png
+
 # Editor
 .vscode/settings.json
 *.suo
