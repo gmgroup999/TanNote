@@ -18,7 +18,7 @@ Vite + React + TS + Tailwind v4 / LINE LIFF / Supabase / Gemini 2.5 Flash / Hetz
 ## Plan limits
 free: 60น./30วัน/ask10/suggest5
 starter(199/เดือน): 800น./เดือน/ask150/suggest50 — **รายเดือน** (quota รีเซ็ตรายเดือน, plan_expires_at = +1 เดือน; แก้ 2026-06-20 จากเดิมรายปี)
-pro(399): 2500น./ตลอดชีพ/∞
+pro(399/เดือน): 2500น./เดือน/ask∞/suggest∞ — **รายเดือน** (quota รีเซ็ตรายเดือน, plan_expires_at = +1 เดือน; แก้ 2026-06-20 จากเดิม lifetime)
 extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก PricingPage; assign ผ่าน Admin Panel เท่านั้น)
 
 ## เอกสารอ้างอิง
@@ -309,6 +309,13 @@ LINE in-app browser ไม่มี download handler → download ตรงๆ �
 ### 🟢 หน้า "รายการ" — ค้นหา/กรอง/จัดกลุ่ม (แก้ปัญหาหาโน้ตยาก)
 - `RecordingsPage.tsx`: 🔍 ช่องค้นหา (ชื่อ/สรุป/transcript/ประเด็น/แท็ก) · 🏷️ tag cloud กดกรองได้ · 📋 dropdown กรอง 9 ประเภท · 📅 จัดกลุ่มตามวัน (วันนี้/เมื่อวาน/สัปดาห์นี้/เดือนนี้/เก่ากว่า)
 - + บรรทัด "พบ X จาก Y" · ปุ่มล้างตัวกรอง · หน้า "ไม่พบ" · ใช้ได้ทั้ง mobile + desktop · กรอง client-side (IndexedDB)
+
+### 🟢 Pro เปลี่ยนเป็นรายเดือน (เดิม lifetime)
+- ราคาแสดง "/เดือน" อยู่แล้ว แต่ quota period + อายุเป็น lifetime = ไม่ตรงกัน (เหมือน starter)
+- **ใหม่**: 2500น./เดือน + ask/suggest ∞ · 399฿/เดือน · `plan_expires_at` = **+1 เดือน** · หมดอายุ → downgrade เป็น free
+- แก้: migration `20260620000006` (period_for_plan pro→YYYY-MM, **เหลือ extra อย่างเดียวที่ lifetime**); แยก pro ออกจาก extra ทุกจุด (periodForPlan, quotaPeriodLabel, formatLimit, autoPlanExpiry, computePlanExpiry, UsageIndicator header+expiryStatus, AdminPage dropdown)
+- Verified: `period_for_plan('pro')` → `2026-06`, extra → `lifetime` ✅
+- **หมายเหตุ**: pro user เดิมที่ plan_expires_at=null จะไม่หมดอายุ (grandfathered) จนกว่า admin re-assign
 
 ### 🟢 Starter เปลี่ยนเป็นรายเดือน (เดิมรายปี)
 - ราคาแสดง "/เดือน" อยู่แล้ว แต่ quota period + อายุเป็นรายปี = ไม่ตรงกัน → user แจ้งให้แก้
