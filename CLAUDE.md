@@ -203,7 +203,7 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 - **URL**: `https://czczwtjgmjnboeeibxcd.supabase.co`
 - **Production URL**: `https://tannote.z-node.cc` (deployed บน Z-Node/Coolify)
 - **Secrets set**: `GEMINI_API_KEY`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET` ✅ (อัปเดต 2026-06-11), `LINE_CHANNEL_ID=2010157477` ✅ (เพิ่ม 2026-06-11), `ADMIN_EMAILS`, `NODE_ID`, `ADMIN_LINE_USER_ID=U8414fbb78490e5c27a1b52ee7dc4593b` ✅
-- **Secret `REQUIRE_LINE_TOKEN=false`** (เคย set true 2026-06-20 แล้ว **roll back เป็น false**) — ถ้า true จะบังคับ `U<32>` ต้องส่ง LIFF token ไม่งั้น 401; ตอนนี้ปิดไว้กัน lockout ระหว่าง stabilize. เปิด true อีกครั้งหลังยืนยัน token flow บน device: `npx supabase secrets set REQUIRE_LINE_TOKEN=true` + redeploy 4 functions
+- **Secret `REQUIRE_LINE_TOKEN=true`** ✅ (set + **verified บน device 2026-06-20**: อัด/ถาม ผ่าน LINE ทำงานปกติ = LINE ส่ง LIFF token จริง) — บังคับ `U<32>` ต้องส่ง token ไม่งั้น 401 → **auth gap ปิดสมบูรณ์ทั้ง email + LINE class**. Rollback ถ้าจำเป็น: `npx supabase secrets set REQUIRE_LINE_TOKEN=false` + redeploy 4 functions
 - **Functions deployed**: `transcribe`, `ask`, `send-reminders`, `line-webhook`, `save-memory`, `admin-api`, `patch-note`, `r2-backup`, `set-webhook` ✅ — ทั้งหมด ACTIVE (06-20: transcribe/ask/save-memory/patch-note redeployed auth-gap+null-collapse; admin-api+line-webhook redeployed payment queue); `set-webhook` source อยู่ใน repo แล้ว
 - **Extensions enabled**: `pg_cron`, `pg_net`, `pgvector`
 - **pg_cron job**: schedule id 1 — ทุก 1 นาที → `send-reminders`; schedule `enforce-plan-expiry` — ทุกชั่วโมง → downgrade Starter ที่หมดอายุ
@@ -310,9 +310,9 @@ LINE in-app browser ไม่มี download handler → download ตรงๆ �
 - `RecordingsPage.tsx`: 🔍 ช่องค้นหา (ชื่อ/สรุป/transcript/ประเด็น/แท็ก) · 🏷️ tag cloud กดกรองได้ · 📋 dropdown กรอง 9 ประเภท · 📅 จัดกลุ่มตามวัน (วันนี้/เมื่อวาน/สัปดาห์นี้/เดือนนี้/เก่ากว่า)
 - + บรรทัด "พบ X จาก Y" · ปุ่มล้างตัวกรอง · หน้า "ไม่พบ" · ใช้ได้ทั้ง mobile + desktop · กรอง client-side (IndexedDB)
 
-### 🟡 Roll back `REQUIRE_LINE_TOKEN=false`
-- กันเสี่ยง lock LINE user ออกระหว่าง stabilize (email gap ยังปิดอยู่ unconditionally) — redeploy transcribe/ask/save-memory/patch-note แล้ว
-- จะเปิด `true` อีกครั้งหลังยืนยัน LIFF token flow บน device จริง
+### 🟢 `REQUIRE_LINE_TOKEN` — เปิด true แล้ว (verified)
+- เคย roll back เป็น false ระหว่าง stabilize white-screen → **เปิดกลับเป็น true 2026-06-20 ปลายวัน**
+- Verified บน device: เปิดผ่าน LINE → อัดเสียง + ถาม AI ทำงานปกติ (LINE ส่ง LIFF token จริง) → **auth gap ปิดครบทั้ง email + LINE class** 🔒
 
 ### 🟢 set-webhook source เข้า repo
 - `npx supabase functions download set-webhook` → `supabase/functions/set-webhook/index.ts` (one-shot util ตั้ง LINE webhook endpoint URL); track ใน repo แล้ว
@@ -914,10 +914,8 @@ LINE in-app browser ละเลย `<a download>` + `window.open('_blank')` ค
 - .txt/.md → เปิดเบราว์เซอร์ภายนอก (liff.openWindow) → ดาวน์โหลดไฟล์จริง + ภาษาไทยอ่านออก (BOM) ✅
 - PDF ซ่อนแล้ว (layout เพี้ยนบนมือถือ)
 
-### 🟡 เปิด `REQUIRE_LINE_TOKEN=true` อีกครั้ง (หลังยืนยัน LIFF token flow)
-- `resolveLineUserId()` ปิด gap: `sa_<uuid>` บังคับ verify session JWT เสมอ (ปิดถาวร); `U<32>` ไม่มี token → reject เมื่อ flag=true
-- **ตอนนี้ flag = `false`** (roll back ไประหว่าง stabilize white-screen) → LINE class ยังปลอม id ได้ถ้าไม่ส่ง token
-- **ก่อนเปิด true**: ทดสอบ device จริงว่า LINE client ส่ง LIFF token (`liff.getIDToken()`) ได้จริง อัดเสียง/ถาม AI ไม่ติด 401 → แล้วค่อย `npx supabase secrets set REQUIRE_LINE_TOKEN=true` + redeploy transcribe/ask/save-memory/patch-note
+### 🟢 เปิด `REQUIRE_LINE_TOKEN=true` — เสร็จ + verified (2026-06-20)
+- set true + redeploy 4 functions + verified บน device (อัด/ถาม ผ่าน LINE ปกติ) → auth gap ปิดครบ
 - โค้ดอ่าน flag แบบ `.trim().toLowerCase()` กัน whitespace
 
 ### 🟢 set-webhook source — เสร็จแล้ว (2026-06-20)
@@ -962,7 +960,7 @@ LINE in-app browser ละเลย `<a download>` + `window.open('_blank')` ค
 | ~~VITE_LIFF_ID Coolify build arg~~ | **หายห่วง 2026-06-20** — server เป็น Z-Node ไม่ใช่ Coolify; VITE_* อยู่ใน committed `app/.env.production` → bake ครบ | — |
 | ~~Export ไฟล์จริงบน LINE WebView~~ | **แก้แล้ว 2026-06-20** — `liff.openWindow(external:true)` → download.html ในเบราว์เซอร์ภายนอก + BOM | .txt/.md ดาวน์โหลดได้จริง ไทยอ่านออก ✅ |
 | PDF export | layout เพี้ยนบนมือถือ (print บีบคอลัมน์) → **ซ่อนปุ่มไว้** | `exportPdf` ยังอยู่ใน `export.ts`; ถ้าจะเปิดใหม่ต้องแก้ CSS print ก่อน |
-| ~~auth gap: optional liffToken~~ | **แก้แล้ว 2026-06-20** — `resolveLineUserId()`: sa_ verify JWT เสมอ (ปิดถาวร), U<32> ต้องมี token เมื่อ `REQUIRE_LINE_TOKEN=true` | **ตอนนี้ flag=false** (roll back) → เหลือเปิด true หลัง device test |
+| ~~auth gap: optional liffToken~~ | **ปิดสมบูรณ์ 2026-06-20** — `resolveLineUserId()`: sa_ verify JWT เสมอ + `REQUIRE_LINE_TOKEN=true` (verified บน device) → ปลอมตัวไม่ได้ทั้ง email + LINE | ✅ |
 | Z-Node webhook deploy ไม่ decrypt | `runProductionDeploy` ใช้ `githubToken`/`envVars` แบบ encrypted → ถ้าแก้ env ผ่าน Z-Node dashboard จะ re-encrypt + คืน token → auto-deploy พัง | set `githubToken`=NULL + envVars plaintext ใน DB อีกครั้ง (repo public ไม่ต้องใช้ token); หรือแก้โค้ด platform ให้ decrypt |
 | Device ที่ค้าง cache เก่า | HTTP cache เก่า (ก่อนใส่ no-cache headers) อาจยังค้างในบางเครื่อง | ปิด LINE สนิท+เปิดใหม่ 1 ครั้ง / clear cache (เกิดครั้งเดียว — no-cache + self-destruct SW กันซ้ำแล้ว) |
 | Quota: pro/extra user เดิม bucket รีเซ็ต | เปลี่ยน period key → lifetime bucket เริ่มที่ 0 (usage รายเดือนเก่าไม่ถูกนับต่อ) | ยอมรับได้ — extra=∞ ไม่กระทบ, pro = generous (ได้ 2500 เต็มนับจากนี้) |
