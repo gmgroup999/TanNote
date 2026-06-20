@@ -95,6 +95,43 @@ function isMobile(): boolean {
   return navigator.maxTouchPoints > 0 || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
+/** True inside the LINE in-app browser (which has no file-download handler). */
+function isLineInApp(): boolean {
+  return typeof navigator !== 'undefined' && /\bLine\//i.test(navigator.userAgent);
+}
+
+/** UTF-8 → base64 (chunked to avoid call-stack limits on large content). */
+function toBase64(s: string): string {
+  const bytes = new TextEncoder().encode(s);
+  let bin = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK)));
+  }
+  return btoa(bin);
+}
+
+// Conservative cap on the base64 length we put in the handoff URL. Beyond this
+// we fall back to the copy overlay (the URL may be truncated on the LINE→browser
+// handoff). Typical notes are a few KB; this covers very long transcripts too.
+const URL_PAYLOAD_LIMIT = 120000;
+
+/**
+ * Hand the content to the external browser for a REAL download. LINE opens the
+ * link in the system browser via ?openExternalBrowser=1; a tiny static page
+ * (/download.html) reads the content from the URL fragment (never sent to the
+ * server) and triggers the actual file download / PDF print there.
+ * @returns false if the payload is too large for a URL (caller should fall back).
+ */
+function externalDownload(content: string, filename: string, kind: 'txt' | 'md' | 'html' | 'pdf'): boolean {
+  const b64 = toBase64(content);
+  if (b64.length > URL_PAYLOAD_LIMIT) return false;
+  const url = `/download.html?openExternalBrowser=1#t=${kind}` +
+    `&n=${encodeURIComponent(filename)}&d=${encodeURIComponent(b64)}`;
+  window.location.href = url;
+  return true;
+}
+
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -105,10 +142,6 @@ function downloadBlob(blob: Blob, filename: string) {
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-function isAbort(err: unknown): boolean {
-  return err instanceof DOMException && err.name === 'AbortError';
 }
 
 /**
@@ -209,36 +242,24 @@ async function copyToClipboard(text: string): Promise<boolean> {
 
 /**
  * Save/export generated content across environments:
- *   • Desktop browsers → direct file download (`<a download>`).
- *   • Capable mobile → Web Share with the actual file (save to Files, forward…).
- *   • LINE in-app browser / WebViews without file share → share as text, then
- *     fall back to copying to the clipboard. These WebViews ignore `<a download>`
- *     and block `window.open`, which is why the buttons appeared to do nothing.
+ *   • Desktop + normal mobile browsers → direct file download (`<a download>`).
+ *   • LINE in-app browser (no download handler) → hand off to the external
+ *     browser via /download.html for a real file download. If the payload is too
+ *     large for a URL, fall back to the in-app copy overlay.
  */
-async function saveOrShare(content: string, filename: string, mime: string) {
-  const blob = new Blob([content], { type: mime });
+function saveOrShare(content: string, filename: string, mime: string) {
+  const kind: 'txt' | 'md' | 'html' =
+    mime.includes('markdown') ? 'md' : mime.includes('html') ? 'html' : 'txt';
 
-  if (isMobile()) {
-    // 1. Share the real file when the platform allows it.
-    const file = new File([blob], filename, { type: mime });
-    if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: filename }); return; }
-      catch (err) { if (isAbort(err)) return; }
-    }
-    // 2. Many WebViews support text sharing but not file sharing.
-    if (typeof navigator.share === 'function') {
-      try { await navigator.share({ title: filename, text: content }); return; }
-      catch (err) { if (isAbort(err)) return; }
-    }
-    // 3. No share at all (LINE Android WebView): show an in-app overlay so the
-    //    content is never trapped silently — copy button + selectable text +
-    //    hint to open an external browser for a real file.
-    showContentOverlay(content, filename);
+  // LINE in-app browser can't download — bounce to the external browser.
+  if (isLineInApp()) {
+    if (externalDownload(content, filename, kind)) return;
+    showContentOverlay(content, filename); // payload too large for URL
     return;
   }
 
-  // Desktop, or mobile when everything above failed.
-  downloadBlob(blob, filename);
+  // Desktop and normal mobile browsers support <a download> directly.
+  downloadBlob(new Blob([content], { type: mime }), filename);
 }
 
 function safeFilename(title: string | undefined, ext: string): string {
@@ -289,6 +310,15 @@ ${md
   .join('\n')}
 </body>
 </html>`;
+
+  // LINE in-app browser can't print/download — hand the styled HTML to the
+  // external browser, where /download.html opens the print dialog (→ Save as PDF).
+  if (isLineInApp()) {
+    if (externalDownload(html, safeFilename(record.title, 'pdf'), 'pdf')) return;
+    showContentOverlay(md, safeFilename(record.title, 'txt'),
+      'เปิดเบราว์เซอร์ภายนอกไม่สำเร็จ — คัดลอกข้อความได้เลย หรือเปิดในเบราว์เซอร์ภายนอกแล้วกด PDF อีกครั้ง');
+    return;
+  }
 
   // Print via a hidden iframe instead of window.open: popup blockers and
   // mobile WebViews return null from window.open, making the PDF button do
