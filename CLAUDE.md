@@ -287,6 +287,17 @@ LINE in-app browser ไม่มี download handler → download ตรงๆ �
 - `RecordingsPage.tsx`: ลบปุ่ม PDF (+ลบ import `exportPdf`); ฟังก์ชัน `exportPdf` ยังคงอยู่ใน `export.ts` เผื่ออนาคต
 - เหลือ export แค่ **.txt / .md** (ทั้งคู่ดาวน์โหลดไฟล์จริง ไทยถูกต้อง)
 
+### 🟢 ระบบยืนยันการชำระเงิน — forward สลิป + คิวรออนุมัติ
+- **forward สลิป**: user ส่งสลิปใน LINE → line-webhook โหลดรูป → เก็บ Supabase Storage (public bucket `payment-slips`) → push **รูปจริง** ไปหา admin พร้อมชื่อ user
+- **Approval queue (เต็มรูปแบบ)**: ผูก user → สลิป → แพลนที่ขอ
+  - `payment_requests` table + RPC `create_payment_request` (client บันทึก intent ตอนเปิด PaymentModal, supersede pending เก่า) + `admin_list_payment_requests`
+  - `PaymentModal`: `useEffect` → `createPaymentRequest(plan, price)` ตอนเปิด
+  - `line-webhook`: แนบ slip_url เข้า pending request ล่าสุด (สร้างใหม่ถ้าไม่มี) + แจ้ง admin ว่าขอแผนไหน
+  - `admin-api`: `list_payment_requests` / `approve_payment_request` (set plan+expiry + push LINE แจ้ง user) / `reject_payment_request`
+  - `AdminPage`: แผง "💰 รออนุมัติ" — รูป/ชื่อ/แผนที่ขอ/ยอด/สลิป + ปุ่มอนุมัติ 1 คลิก (+ dropdown override แผน)
+- **🔴 SECURITY fix**: `admin_list_users` + `admin_list_payment_requests` เคยเรียกได้ด้วย anon ผ่าน PostgREST (leak users/emails/slips ทั้งหมด!) → revoke execute จาก public/anon/authenticated, grant เฉพาะ service_role (migration `20260620000004`)
+- bucket `payment-slips` เป็น public URL (path = LINE ID + messageId เดายาก) — ถ้าจะปลอดภัยกว่าเปลี่ยนเป็น signed URL ภายหลัง
+
 ### 🟡 Roll back `REQUIRE_LINE_TOKEN=false`
 - กันเสี่ยง lock LINE user ออกระหว่าง stabilize (email gap ยังปิดอยู่ unconditionally) — redeploy transcribe/ask/save-memory/patch-note แล้ว
 - จะเปิด `true` อีกครั้งหลังยืนยัน LIFF token flow บน device จริง
