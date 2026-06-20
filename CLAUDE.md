@@ -204,7 +204,7 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 - **Production URL**: `https://tannote.z-node.cc` (deployed บน Z-Node/Coolify)
 - **Secrets set**: `GEMINI_API_KEY`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET` ✅ (อัปเดต 2026-06-11), `LINE_CHANNEL_ID=2010157477` ✅ (เพิ่ม 2026-06-11), `ADMIN_EMAILS`, `NODE_ID`, `ADMIN_LINE_USER_ID=U8414fbb78490e5c27a1b52ee7dc4593b` ✅
 - **Secret `REQUIRE_LINE_TOKEN=false`** (เคย set true 2026-06-20 แล้ว **roll back เป็น false**) — ถ้า true จะบังคับ `U<32>` ต้องส่ง LIFF token ไม่งั้น 401; ตอนนี้ปิดไว้กัน lockout ระหว่าง stabilize. เปิด true อีกครั้งหลังยืนยัน token flow บน device: `npx supabase secrets set REQUIRE_LINE_TOKEN=true` + redeploy 4 functions
-- **Functions deployed**: `transcribe`, `ask`, `send-reminders`, `line-webhook`, `save-memory`, `admin-api`, `patch-note`, `r2-backup`, `set-webhook` ✅ — ทั้งหมด ACTIVE (transcribe/ask/save-memory/patch-note redeployed 2026-06-20 auth-gap fix); `set-webhook` source ดึงเข้า repo แล้ว 2026-06-20 (`supabase/functions/set-webhook/index.ts`)
+- **Functions deployed**: `transcribe`, `ask`, `send-reminders`, `line-webhook`, `save-memory`, `admin-api`, `patch-note`, `r2-backup`, `set-webhook` ✅ — ทั้งหมด ACTIVE (06-20: transcribe/ask/save-memory/patch-note redeployed auth-gap+null-collapse; admin-api+line-webhook redeployed payment queue); `set-webhook` source อยู่ใน repo แล้ว
 - **Extensions enabled**: `pg_cron`, `pg_net`, `pgvector`
 - **pg_cron job**: schedule id 1 — ทุก 1 นาที → `send-reminders`; schedule `enforce-plan-expiry` — ทุกชั่วโมง → downgrade Starter ที่หมดอายุ
 - **LINE Webhook URL**: `https://czczwtjgmjnboeeibxcd.supabase.co/functions/v1/line-webhook` ✅ (active)
@@ -212,7 +212,7 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 - **LINE Rich Menu**: `richmenu-63977447feea57f4299a347397f3adf3` — 1-ปุ่ม TanNote logo, set เป็น default ✅ (2026-06-12)
 - **LIFF**: Published ✅ (2026-06-11) — endpoint URL: `https://tannote.z-node.cc/` (เปลี่ยนกลับจาก `/app` เมื่อ 2026-06-12)
 - **SMTP**: Resend — smtp.resend.com:465, sender: `onboarding@resend.dev`
-- **Migrations applied**: ทั้งหมดถึง `20260619000001_quota_period_per_plan.sql` ✅
+- **Migrations applied**: ทั้งหมดถึง `20260620000004_revoke_admin_rpcs.sql` ✅ (06-20: plan_expires, payment_slips bucket, payment_requests, revoke admin RPCs)
 
 ---
 
@@ -298,6 +298,18 @@ LINE in-app browser ไม่มี download handler → download ตรงๆ �
 - **🔴 SECURITY fix**: `admin_list_users` + `admin_list_payment_requests` เคยเรียกได้ด้วย anon ผ่าน PostgREST (leak users/emails/slips ทั้งหมด!) → revoke execute จาก public/anon/authenticated, grant เฉพาะ service_role (migration `20260620000004`)
 - bucket `payment-slips` เป็น public URL (path = LINE ID + messageId เดายาก) — ถ้าจะปลอดภัยกว่าเปลี่ยนเป็น signed URL ภายหลัง
 
+### 🟢 ซ่อนเมนู "กราฟ" จาก bottom nav
+- `App.tsx`: ลบ nav item `graph` (route + GraphViewPage ยังอยู่ เผื่อเปิดใหม่); nav เหลือ บันทึก/รายการ/ถาม AI/นัดหมาย/ตั้งค่า
+
+### 🟢 ตัวชี้วันครบกำหนดแพลน + ทำให้เปลี่ยนแพลนเห็นง่าย
+- migration `20260620000001`: `get_current_usage` คืน `plan_expires_at`
+- `UsageIndicator` (หน้าตั้งค่า): แสดง "📅 ครบกำหนด <วันที่> · เหลือ N วัน" (starter, แดงเมื่อ ≤7วัน/หมด), "ตลอดชีพ" (pro/extra), "ฟรี" (free)
+- ปุ่ม **"ดูแพลน & อัปเกรด"** เป็นปุ่มแดงเต็มกว้าง เห็นทุกแผน (เดิมลิงก์เล็ก เฉพาะ free/starter)
+
+### 🟢 หน้า "รายการ" — ค้นหา/กรอง/จัดกลุ่ม (แก้ปัญหาหาโน้ตยาก)
+- `RecordingsPage.tsx`: 🔍 ช่องค้นหา (ชื่อ/สรุป/transcript/ประเด็น/แท็ก) · 🏷️ tag cloud กดกรองได้ · 📋 dropdown กรอง 9 ประเภท · 📅 จัดกลุ่มตามวัน (วันนี้/เมื่อวาน/สัปดาห์นี้/เดือนนี้/เก่ากว่า)
+- + บรรทัด "พบ X จาก Y" · ปุ่มล้างตัวกรอง · หน้า "ไม่พบ" · ใช้ได้ทั้ง mobile + desktop · กรอง client-side (IndexedDB)
+
 ### 🟡 Roll back `REQUIRE_LINE_TOKEN=false`
 - กันเสี่ยง lock LINE user ออกระหว่าง stabilize (email gap ยังปิดอยู่ unconditionally) — redeploy transcribe/ask/save-memory/patch-note แล้ว
 - จะเปิด `true` อีกครั้งหลังยืนยัน LIFF token flow บน device จริง
@@ -319,7 +331,12 @@ LINE in-app browser ไม่มี download handler → download ตรงๆ �
 | `a0c3331` | Export: open external browser via `liff.openWindow` |
 | `4229735` | Export: UTF-8 BOM (แก้ไทย mojibake) |
 | `c281daf` | ซ่อนปุ่ม PDF export |
-| `e27f2ef`/`4e07dea`/`d98e2e9`/`aa02c5c`/`42ba164` | CLAUDE.md updates |
+| `ba3e536` | ซ่อนเมนูกราฟ |
+| `ce9e62a` | ตัวชี้วันครบกำหนดแพลน + ปุ่มดูแพลน/อัปเกรด |
+| `4b9a277` | หน้ารายการ: ค้นหา + กรองแท็ก/ประเภท + จัดกลุ่มตามวัน |
+| `89eba0f` | Payment: forward สลิปให้ admin LINE |
+| `0098cde` | Payment approval queue + fix admin RPC anon leak |
+| `e27f2ef`/`4e07dea`/`d98e2e9`/`aa02c5c`/`42ba164`/`f02106f`/`db57200` | CLAUDE.md updates |
 
 ### ไฟล์ที่แก้ไขวันนี้ (2026-06-20)
 | ไฟล์ | สิ่งที่เปลี่ยน |
@@ -336,7 +353,18 @@ LINE in-app browser ไม่มี download handler → download ตรงๆ �
 | `app/public/sw.js` | เปลี่ยนเป็น **self-destruct** SW (clear caches + unregister + reload) |
 | `app/index.html` | ลบ SW registration → unregister SW เดิม |
 | `app/Dockerfile` | **ไฟล์ใหม่** — Z-Node ใช้แทน Dockerfile.znode; nginx cache headers (assets immutable + `=404`, shell no-cache) |
-| `app/src/pages/RecordingsPage.tsx` | ลบปุ่ม PDF + import `exportPdf` |
+| `app/src/pages/RecordingsPage.tsx` | ลบปุ่ม PDF; + ค้นหา/กรองแท็ก/กรองประเภท/จัดกลุ่มตามวัน (`dateGroupOf`, `recordHaystack`, filterBar, renderGroups) |
+| `app/src/App.tsx` | ลบ nav item `graph` |
+| `app/src/components/UsageIndicator.tsx` | + `expiryStatus()` แสดงวันครบกำหนด; ปุ่มดูแพลน/อัปเกรดทุกแผน |
+| `app/src/components/PaymentModal.tsx` | + `useEffect` → `createPaymentRequest(plan, price)` (บันทึก intent) |
+| `app/src/pages/AdminPage.tsx` | + แผง "รออนุมัติ" (list/approve/reject payment requests + slip) |
+| `app/src/lib/api.ts` | + `plan_expires_at` ใน `UsageSummary`; + `createPaymentRequest()` |
+| `supabase/functions/admin-api/index.ts` | + actions `list/approve/reject_payment_request` (approve set plan+expiry + push LINE) |
+| `supabase/functions/line-webhook/index.ts` | + `pushImage()`/`uploadSlip()`; forward สลิป + แนบ payment_request + แจ้งแผนที่ขอ |
+| `supabase/migrations/20260620000001_usage_plan_expires.sql` | **ใหม่** — `get_current_usage` + `plan_expires_at` |
+| `supabase/migrations/20260620000002_payment_slips_bucket.sql` | **ใหม่** — public bucket `payment-slips` |
+| `supabase/migrations/20260620000003_payment_requests.sql` | **ใหม่** — table + `create_payment_request` + `admin_list_payment_requests` |
+| `supabase/migrations/20260620000004_revoke_admin_rpcs.sql` | **ใหม่** — revoke admin list RPCs จาก anon (security) |
 | `app/public/manifest.json`, `nginx.conf`, `scripts/setup-rich-menu.mjs`, `.gitignore` | commit งานค้าง 2026-06-12 |
 | `Z-Node DB (znodedb.projects)` | `deployBranch` admin→main; `githubToken`=NULL (project `cmpi2lktj0000j29w86sna6ne`) |
 | `GitHub repo webhook` | สร้าง hook id `644333393` → `auto.z-node.cc/api/webhooks/github` |
@@ -868,6 +896,15 @@ LINE in-app browser ละเลย `<a download>` + `window.open('_blank')` ค
 ### 🟢 Redeploy save-memory + patch-note — เสร็จแล้ว
 - ตรวจ 2026-06-19: ทั้งคู่ deploy ไป Supabase แล้วตั้งแต่ 2026-06-11 08:50 UTC (มี LIFF JWT + ownership ครบ) — TODO เดิมล้าสมัย
 
+### 🟢 ระบบ Payment (forward สลิป + approval queue) — เสร็จ + verified (2026-06-20)
+- ทดสอบ end-to-end บน device: ส่งสลิป → ขึ้นแผงรออนุมัติพร้อมรูป → อนุมัติได้ ✅
+- Admin Panel โหลด user list ได้ปกติหลัง revoke admin RPC (service_role ทำงาน) ✅
+- เก็บกวาด: ลบ payment_request ทดสอบที่ค้าง (กดปฏิเสธใน Admin Panel)
+
+### 🟡 ต่อ auto-verify สลิป (EasySlip / SlipOK) — optional ระยะยาว
+- โครง `payment_requests` รองรับแล้ว: เปลี่ยนจาก admin กดอนุมัติ → auto-approve เมื่อ API ยืนยันสลิป (ยอดตรง + บัญชีถูก + เลขอ้างอิงไม่ซ้ำ)
+- ต้องสมัคร API (EasySlip มี free tier) + เก็บ transRef กันสลิปซ้ำ
+
 ### 🟡 ทดสอบ Quota period ใหม่บน device จริง
 - starter: ใช้จนเกิน → ต้องเต็มแบบ **รายปี** (ไม่รีเซ็ตเดือนหน้า)
 - pro: recording นับสะสม **ตลอดชีพ** (cap 2500), ask/suggest = ∞
@@ -918,7 +955,9 @@ LINE in-app browser ละเลย `<a download>` + `window.open('_blank')` ค
 | Landing page ไม่ได้อยู่ที่ `/` ใน production | Z-Node/Coolify generate nginx ของตัวเอง — ไม่ใช้ `nginx.conf` ของ project; landing อยู่ที่ `/landing.html` | Serve React SPA ที่ `/` ต่อไป (ผู้ใช้เข้าผ่าน LINE LIFF ไม่ใช่ direct URL); หรือ integrate `landing.html` เข้า React Router เป็น route `/` |
 | รูปโปรไฟล์ user เก่าไม่มี | picture_url ว่างใน DB สำหรับ user ที่ยังไม่ได้บันทึกใหม่หลัง deploy | รอ user บันทึกเสียงครั้งใหม่ (transcribe upsert อัตโนมัติ) |
 | ไมโครโฟน ถามทุก session | Android WebView ไม่ persist mic permission ข้าม session — OS limitation | แก้ไม่ได้ใน code; user กด "อนุญาตเฉพาะครั้งนี้" ทุกครั้งที่เปิด LINE ใหม่ |
-| ระบบชำระเงิน auto-verify ยังไม่มี | ปัจจุบัน manual verify ผ่าน LINE + admin panel; auto-webhook เป็น optional อนาคต | integrate payment webhook ถ้าต้องการ scale |
+| ระบบชำระเงิน auto-verify ยังไม่มี | มี **approval queue** แล้ว (forward สลิป + admin อนุมัติ 1 คลิก 2026-06-20); auto-verify (EasySlip) ยังไม่ทำ | ต่อ EasySlip → auto-approve (payment_requests รองรับแล้ว) |
+| payment-slips bucket เป็น public | สลิปเก็บใน Supabase Storage public bucket (path = LINE ID + messageId เดายาก แต่เป็น public URL) | ถ้าต้องการ privacy สูง → เปลี่ยนเป็น signed URL + private bucket |
+| ~~admin RPC anon leak~~ | **แก้แล้ว 2026-06-20** — `admin_list_users`/`admin_list_payment_requests` เคย anon เรียกได้ (leak users/emails/slips) → revoke เหลือ service_role | verified anon → 401 ✅ |
 | LIFF token เป็น `null` นอก LINE client | `liff.getIDToken()` คืน null เมื่อเปิดในเบราว์เซอร์ปกติ — fallback ไปใช้ `x-line-user-id` จาก localStorage | ยอมรับ: browser testing ใช้ `dev_xxx` fallback; production ใช้ผ่าน LINE เท่านั้น |
 | ~~VITE_LIFF_ID Coolify build arg~~ | **หายห่วง 2026-06-20** — server เป็น Z-Node ไม่ใช่ Coolify; VITE_* อยู่ใน committed `app/.env.production` → bake ครบ | — |
 | ~~Export ไฟล์จริงบน LINE WebView~~ | **แก้แล้ว 2026-06-20** — `liff.openWindow(external:true)` → download.html ในเบราว์เซอร์ภายนอก + BOM | .txt/.md ดาวน์โหลดได้จริง ไทยอ่านออก ✅ |
