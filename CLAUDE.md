@@ -246,7 +246,21 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 - **Fix**: เพิ่ม `showContentOverlay()` ใน `export.ts` — overlay ในแอป (textarea เลือกได้ + ปุ่มคัดลอก + hint เปิดเบราว์เซอร์ภายนอก) ใช้เมื่อไม่มี share path (txt/md) และเมื่อ iframe print ใช้ไม่ได้ (PDF แสดง text + hint บันทึก PDF); desktop download เดิมไม่กระทบ
 - build + tsc สะอาด; commit `6f9e9c1` → push (frontend deploy ผ่าน Coolify)
 
-### 🔵 set-webhook source เข้า repo
+### 🟢 Deploy infra ที่แท้จริง + ตั้ง auto-deploy (สำคัญมาก — เดิม CLAUDE.md เข้าใจผิดว่าเป็น Coolify)
+Frontend **ไม่ได้ deploy ผ่าน Coolify** — server ใช้ platform custom ชื่อ **Z-Node**
+- **Server**: Hetzner `195.201.81.33` (user `jack`, SSH key `~/.ssh/hetzner_nt_node`)
+- **Z-Node platform**: container `znode-platform` (port 3001), dashboard `https://auto.z-node.cc`, DB `znode-postgres` (`znodedb`)
+- **แอป TanNote**: clone อยู่ที่ `/opt/projects/tannote` (git repo), build เป็น container `znode-tannote` (image `tannote-app`, port 3010); compose `docker-compose.znode.yml` + `app/Dockerfile.znode` (untracked, gen โดย Z-Node)
+- **VITE_* build args**: อยู่ใน `/opt/projects/tannote/app/.env.production` (มี SUPABASE_URL/ANON_KEY/LIFF_ID/ADMIN_EMAILS ครบ — Vite bake ตอน build) → **ไม่ใช่ปัญหา** (TODO เดิมเรื่อง VITE_LIFF_ID build arg = หายห่วง)
+- **Deploy ด้วยมือ**: `cd /opt/projects/tannote && sudo git reset --hard origin/main && sudo docker compose -f docker-compose.znode.yml up -d --build` (build fail = container เดิมรันต่อ ปลอดภัย)
+
+**🔴 สาเหตุที่ auto-deploy ไม่เคยทำงาน**: project ใน Z-Node DB ตั้ง `deployBranch='admin'` (ไม่ใช่ `main`) → push main ไม่ trigger production deploy
+- แก้: `UPDATE projects SET "deployBranch"='main'` (project id `cmpi2lktj0000j29w86sna6ne`) ✅
+- สร้าง **GitHub webhook** (id `644333393`) → `https://auto.z-node.cc/api/webhooks/github` (content-type json, push+pull_request, secret = project.webhookSecret); ping delivery = 200 ✅
+- ใช้ token จาก git credential ของเครื่อง (`gho_`, scope `repo`) สร้าง webhook (Z-Node เก็บแค่ placeholder `ZnodeAdmin2026!` ไม่ใช่ token จริง)
+- **ผลลัพธ์**: push → main = auto-deploy เอง (ใส่ `[skip deploy]` ใน commit msg = ข้าม)
+
+### 🟢 set-webhook source เข้า repo
 - `npx supabase functions download set-webhook` → `supabase/functions/set-webhook/index.ts` (one-shot util ตั้ง LINE webhook endpoint URL); track ใน repo แล้ว
 
 ### Git
