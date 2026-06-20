@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { listAudioRecordings, deleteAudio, updateAudioRecord, type AudioRecord, type StructuredTag, type ReminderItem } from '../lib/db';
 import { RECORDING_TYPES, type RecordingTypeKey } from '../config/recordingTypes';
 import { transcribeAudio, confirmNoteLink, deleteNote, deleteReminder, reprocessNote, patchNote, uploadR2Backup } from '../lib/api';
-import { exportMarkdown, exportText, exportPdf } from '../lib/export';
+import { exportMarkdown, exportText } from '../lib/export';
 import { getPlanCache } from '../lib/planCache';
 import { PLAN_LIMITS, type Plan } from '../config/plans';
 
@@ -585,12 +585,7 @@ function RecordingItem({
               className="text-[11px] px-2.5 py-1 rounded-full bg-gray-100 dark:bg-[#333336] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-[#444448] transition-colors">
               .md
             </button>
-            {planLimits.can_export_pdf && (
-              <button onClick={() => exportPdf(record)}
-                className="text-[11px] px-2.5 py-1 rounded-full bg-gray-100 dark:bg-[#333336] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-[#444448] transition-colors">
-                PDF
-              </button>
-            )}
+            {/* PDF export hidden — layout/encoding issues in mobile print. Use .txt/.md. */}
           </div>
         );
       })()}
