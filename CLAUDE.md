@@ -203,7 +203,8 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 - **URL**: `https://czczwtjgmjnboeeibxcd.supabase.co`
 - **Production URL**: `https://tannote.z-node.cc` (deployed บน Z-Node/Coolify)
 - **Secrets set**: `GEMINI_API_KEY`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET` ✅ (อัปเดต 2026-06-11), `LINE_CHANNEL_ID=2010157477` ✅ (เพิ่ม 2026-06-11), `ADMIN_EMAILS`, `NODE_ID`, `ADMIN_LINE_USER_ID=U8414fbb78490e5c27a1b52ee7dc4593b` ✅
-- **Functions deployed**: `transcribe`, `ask`, `send-reminders`, `line-webhook`, `save-memory`, `admin-api`, `patch-note`, `r2-backup`, `set-webhook` ✅ — ทั้งหมด ACTIVE (save-memory + patch-note deploy แล้ว 2026-06-11; transcribe/ask/admin-api redeployed 2026-06-19 quota fix); `set-webhook` ไม่มี source ใน repo
+- **Secret optional**: `REQUIRE_LINE_TOKEN` — ยังไม่ได้ set (default false). ตั้งเป็น `true` เมื่อยืนยัน LINE token flow บน device จริงแล้ว → บังคับ `U<32>` ต้องมี LIFF token (ปิด impersonation gap สำหรับ LINE class)
+- **Functions deployed**: `transcribe`, `ask`, `send-reminders`, `line-webhook`, `save-memory`, `admin-api`, `patch-note`, `r2-backup`, `set-webhook` ✅ — ทั้งหมด ACTIVE (transcribe/ask/save-memory/patch-note redeployed 2026-06-20 auth-gap fix); `set-webhook` source ดึงเข้า repo แล้ว 2026-06-20 (`supabase/functions/set-webhook/index.ts`)
 - **Extensions enabled**: `pg_cron`, `pg_net`, `pgvector`
 - **pg_cron job**: schedule id 1 — ทุก 1 นาที → `send-reminders`; schedule `enforce-plan-expiry` — ทุกชั่วโมง → downgrade Starter ที่หมดอายุ
 - **LINE Webhook URL**: `https://czczwtjgmjnboeeibxcd.supabase.co/functions/v1/line-webhook` ✅ (active)
@@ -212,6 +213,38 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 - **LIFF**: Published ✅ (2026-06-11) — endpoint URL: `https://tannote.z-node.cc/` (เปลี่ยนกลับจาก `/app` เมื่อ 2026-06-12)
 - **SMTP**: Resend — smtp.resend.com:465, sender: `onboarding@resend.dev`
 - **Migrations applied**: ทั้งหมดถึง `20260619000001_quota_period_per_plan.sql` ✅
+
+---
+
+## สิ่งที่ทำวันนี้ (2026-06-20)
+
+### Commit ของค้าง 2026-06-12 (path revert + rich menu)
+- การแก้ไข 5 ไฟล์ที่ค้างไม่ได้ commit (manifest/sw/nginx `/app`→`/`, rich-menu rewrite, .gitignore) → commit `88ad4da`
+
+### 🔴 ปิด auth impersonation gap
+ปัญหาเดิม: ทุก Edge Function เชื่อ `x-line-user-id` ตรง ๆ ถ้าไม่ส่ง LIFF token → omit token + ปลอม id = ปลอมตัวเป็น user อื่นได้
+- เพิ่ม `resolveLineUserId()` ใน `_shared/liff-verify.ts` — แยก identity 3 class:
+  - **LIFF token มา** → verified LINE id เป็น authoritative
+  - **`sa_<uuid>` (email)** → **บังคับเสมอ** verify Supabase session JWT ให้ตรงกับ uuid (ปิด gap; email user ส่ง JWT เสมอ ไม่ break)
+  - **`U<32>` ไม่มี token** → reject เฉพาะเมื่อ secret `REQUIRE_LINE_TOKEN=true` (default off กัน lockout live user ก่อน device test)
+  - **`dev_*`/anonymous** → sandbox แยก ไม่มีความเสี่ยง → ผ่าน
+- wire เข้า transcribe, ask, save-memory, patch-note (ลบ block `if (liffToken)` เดิม)
+- **Verified production**: `sa_` ไม่มี JWT → 401 "เซสชันไม่ถูกต้อง"; `dev_`/`U<32>` (flag off) → auth ผ่าน → 400 "ไม่มีคำถาม" ✅
+- Deploy: transcribe/ask/save-memory/patch-note redeployed 2026-06-20 ✅
+
+### 🔵 set-webhook source เข้า repo
+- `npx supabase functions download set-webhook` → `supabase/functions/set-webhook/index.ts` (one-shot util ตั้ง LINE webhook endpoint URL); track ใน repo แล้ว
+
+### Git
+- `88ad4da` (path revert + rich menu), `7eb768a` (auth gap + set-webhook) → push origin/main ✅
+
+### ไฟล์ที่แก้ไขวันนี้ (2026-06-20)
+| ไฟล์ | สิ่งที่เปลี่ยน |
+|---|---|
+| `supabase/functions/_shared/liff-verify.ts` | + `resolveLineUserId()` + `AuthResult` type (sa_ JWT verify, LINE-token flag, dev sandbox) |
+| `supabase/functions/{transcribe,ask,save-memory,patch-note}/index.ts` | แทน block `if (liffToken)` ด้วย `resolveLineUserId()` (เรียกหลังสร้าง supabase client) |
+| `supabase/functions/set-webhook/index.ts` | **ไฟล์ใหม่** — ดึง source จาก deployed function |
+| `app/public/{manifest.json,sw.js}`, `nginx.conf`, `scripts/setup-rich-menu.mjs`, `.gitignore` | commit งานค้าง 2026-06-12 |
 
 ---
 
@@ -748,12 +781,12 @@ LINE in-app browser ละเลย `<a download>` + `window.open('_blank')` ค
 - กด .txt/.md → ควรขึ้น share sheet หรือ "คัดลอกเนื้อหาแล้ว ✓"
 - ถ้าอยากได้ไฟล์จริง → เปิดในเบราว์เซอร์ภายนอก (⋮ → เปิดในเบราว์เซอร์)
 
-### 🟡 พิจารณา auth gap (optional liffToken)
-- ทุก function verify token แบบ `if (liffToken)` → ปลอม `x-line-user-id` โดยไม่ส่ง token = ปลอมตัวได้
-- ทางแก้: บังคับ token-required ใน production แต่คง `dev_xxx` fallback ไว้ browser testing
+### 🟢 auth gap (optional liffToken) — เสร็จแล้ว (2026-06-20)
+- `resolveLineUserId()` ปิด gap: `sa_<uuid>` บังคับ verify session JWT เสมอ; `U<32>` ไม่มี token → reject เมื่อ `REQUIRE_LINE_TOKEN=true`
+- **เหลือทำ**: set secret `REQUIRE_LINE_TOKEN=true` หลังยืนยัน LINE token flow บน device จริง (ตอนนี้ default off กัน lockout)
 
-### 🔵 set-webhook function ไม่มี source ใน repo
-- ACTIVE บน Supabase (v8) แต่ entrypoint `/TanNote/...` (deploy คนละวิธี) — ไม่มีไฟล์ใน repo local; พิจารณาดึง source มาเก็บหรือลบถ้าไม่ใช้
+### 🟢 set-webhook source — เสร็จแล้ว (2026-06-20)
+- ดึง source เข้า repo: `supabase/functions/set-webhook/index.ts` (one-shot util ตั้ง LINE webhook endpoint URL)
 
 ### 🔴 ยืนยัน VITE_LIFF_ID ใน Coolify build args
 - ถ้า build arg หายไป → `LIFF_ENABLED=false` → LINE login ไม่ทำงาน → white screen
@@ -793,5 +826,5 @@ LINE in-app browser ละเลย `<a download>` + `window.open('_blank')` ค
 | `VITE_LIFF_ID` Coolify build arg ยังไม่ได้ยืนยัน | ถ้า build arg ไม่ถูก set → `LIFF_ENABLED=false` → LINE users เห็น LoginPage ไม่มีปุ่ม LINE login → ติดอยู่หน้า login | ตรวจสอบ Coolify → TanNote service → Environment Variables (Build args) ว่ามี `VITE_LIFF_ID=2010157477-I2NTp3zI` |
 | Export ไฟล์จริงบน LINE WebView | iOS WKWebView ไม่ support file share + บล็อก download → ได้แค่แชร์ข้อความ/คัดลอก clipboard | เปิดในเบราว์เซอร์ภายนอก (⋮ → เปิดในเบราว์เซอร์) แล้ว download ตรง ๆ ได้; โค้ดมี fallback clipboard ให้แล้ว |
 | PDF บน LINE WebView | `iframe.print()` อาจไม่ทำงานใน WebView (โดยเฉพาะ iOS) | fallback แชร์เป็นไฟล์ .html; หรือเปิดในเบราว์เซอร์ภายนอกแล้วสั่งพิมพ์ → Save as PDF |
-| auth gap: optional liffToken | function verify token แบบ `if (liffToken)` — omit token + ปลอม `x-line-user-id` = ปลอมตัวเป็น user อื่นได้ | บังคับ token-required ใน production (คง `dev_xxx` fallback ไว้ test) — ดู TODO |
+| ~~auth gap: optional liffToken~~ | **แก้แล้ว 2026-06-20** — `resolveLineUserId()`: sa_ verify JWT เสมอ, U<32> ต้องมี token เมื่อ `REQUIRE_LINE_TOKEN=true` | เหลือ set secret `REQUIRE_LINE_TOKEN=true` หลัง device test |
 | Quota: pro/extra user เดิม bucket รีเซ็ต | เปลี่ยน period key → lifetime bucket เริ่มที่ 0 (usage รายเดือนเก่าไม่ถูกนับต่อ) | ยอมรับได้ — extra=∞ ไม่กระทบ, pro = generous (ได้ 2500 เต็มนับจากนี้) |
