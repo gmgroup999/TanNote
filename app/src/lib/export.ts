@@ -111,6 +111,79 @@ function isAbort(err: unknown): boolean {
   return err instanceof DOMException && err.name === 'AbortError';
 }
 
+/**
+ * Last-resort, never-silent fallback for in-app WebViews (notably LINE on
+ * Android) where navigator.share is missing, clipboard is blocked, and
+ * `<a download>` is ignored — so every other path fails without feedback.
+ * Shows the content in a selectable textarea with a one-tap copy button and a
+ * hint to open an external browser for a real file download.
+ */
+function showContentOverlay(content: string, filename: string, note?: string) {
+  const overlay = document.createElement('div');
+  overlay.setAttribute('role', 'dialog');
+  Object.assign(overlay.style, {
+    position: 'fixed', inset: '0', zIndex: '99999',
+    background: 'rgba(0,0,0,0.6)', display: 'flex',
+    alignItems: 'center', justifyContent: 'center', padding: '16px',
+  } as CSSStyleDeclaration);
+
+  const panel = document.createElement('div');
+  Object.assign(panel.style, {
+    background: '#1E1E20', color: '#fff', borderRadius: '16px',
+    width: '100%', maxWidth: '520px', maxHeight: '85vh',
+    display: 'flex', flexDirection: 'column', overflow: 'hidden',
+    boxShadow: '0 10px 40px rgba(0,0,0,0.4)',
+  } as CSSStyleDeclaration);
+
+  const header = document.createElement('div');
+  Object.assign(header.style, {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    padding: '14px 16px', borderBottom: '1px solid #333336',
+  } as CSSStyleDeclaration);
+  const title = document.createElement('span');
+  title.textContent = filename;
+  Object.assign(title.style, { fontSize: '13px', fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } as CSSStyleDeclaration);
+  const closeX = document.createElement('button');
+  closeX.textContent = '✕';
+  Object.assign(closeX.style, { background: 'none', border: 'none', color: '#aaa', fontSize: '18px', cursor: 'pointer', padding: '0 4px' } as CSSStyleDeclaration);
+  header.append(title, closeX);
+
+  const ta = document.createElement('textarea');
+  ta.value = content;
+  ta.readOnly = true;
+  Object.assign(ta.style, {
+    flex: '1', margin: '12px 16px 0', padding: '10px', minHeight: '160px',
+    background: '#252527', color: '#eee', border: '1px solid #333336',
+    borderRadius: '10px', fontSize: '12px', lineHeight: '1.6', resize: 'none',
+    fontFamily: 'inherit',
+  } as CSSStyleDeclaration);
+
+  const hint = document.createElement('p');
+  hint.textContent = note ?? 'แตะ "คัดลอกทั้งหมด" แล้ววางในแอปอื่นได้เลย • อยากได้ไฟล์จริง: เมนู ⋮ ของ LINE → เปิดในเบราว์เซอร์ แล้วกด export อีกครั้ง';
+  Object.assign(hint.style, { fontSize: '11px', color: '#999', margin: '8px 16px', lineHeight: '1.5' } as CSSStyleDeclaration);
+
+  const copyBtn = document.createElement('button');
+  copyBtn.textContent = 'คัดลอกทั้งหมด';
+  Object.assign(copyBtn.style, {
+    margin: '0 16px 16px', padding: '12px', background: '#E24B4A', color: '#fff',
+    border: 'none', borderRadius: '12px', fontSize: '14px', fontWeight: '600', cursor: 'pointer',
+  } as CSSStyleDeclaration);
+
+  const close = () => { if (overlay.parentNode) document.body.removeChild(overlay); };
+  closeX.onclick = close;
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+  copyBtn.onclick = async () => {
+    ta.focus(); ta.select();
+    const ok = await copyToClipboard(content);
+    copyBtn.textContent = ok ? 'คัดลอกแล้ว ✓' : 'เลือกข้อความแล้วคัดลอกเอง';
+    if (ok) setTimeout(close, 700);
+  };
+
+  panel.append(header, ta, hint, copyBtn);
+  overlay.append(panel);
+  document.body.appendChild(overlay);
+}
+
 async function copyToClipboard(text: string): Promise<boolean> {
   try {
     if (navigator.clipboard?.writeText) {
@@ -157,15 +230,11 @@ async function saveOrShare(content: string, filename: string, mime: string) {
       try { await navigator.share({ title: filename, text: content }); return; }
       catch (err) { if (isAbort(err)) return; }
     }
-    // 3. Last resort — copy so the content is never trapped in the app.
-    if (await copyToClipboard(content)) {
-      alert(
-        'คัดลอกเนื้อหาแล้ว ✓ วางในแอปโน้ต/แชตได้เลย\n\n' +
-        'หมายเหตุ: เบราว์เซอร์ในแอป LINE บันทึกเป็นไฟล์ไม่ได้ ' +
-        'ถ้าต้องการไฟล์ ให้เปิดผ่านเบราว์เซอร์ภายนอก (เมนู ⋮ → เปิดในเบราว์เซอร์)',
-      );
-      return;
-    }
+    // 3. No share at all (LINE Android WebView): show an in-app overlay so the
+    //    content is never trapped silently — copy button + selectable text +
+    //    hint to open an external browser for a real file.
+    showContentOverlay(content, filename);
+    return;
   }
 
   // Desktop, or mobile when everything above failed.
@@ -248,8 +317,19 @@ ${md
       cleanup();
     } catch {
       cleanup();
-      // WebView can't print — share the HTML file as a fallback.
-      void saveOrShare(html, safeFilename(record.title, 'html'), 'text/html');
+      pdfFallback();
+    }
+  };
+
+  const pdfFallback = () => {
+    if (isMobile()) {
+      showContentOverlay(
+        md,
+        safeFilename(record.title, 'txt'),
+        'เบราว์เซอร์ในแอป LINE บันทึก PDF ไม่ได้ • คัดลอกข้อความได้เลย หรือเปิดในเบราว์เซอร์ภายนอก (เมนู ⋮ → เปิดในเบราว์เซอร์) แล้วกด PDF เพื่อสั่งพิมพ์ → บันทึกเป็น PDF',
+      );
+    } else {
+      downloadBlob(new Blob([html], { type: 'text/html' }), safeFilename(record.title, 'html'));
     }
   };
 
@@ -260,6 +340,6 @@ ${md
     doc.close();
   } else {
     document.body.removeChild(iframe);
-    void saveOrShare(html, safeFilename(record.title, 'html'), 'text/html');
+    pdfFallback();
   }
 }
