@@ -423,6 +423,7 @@ export interface UsageSummary {
   recording_minutes:     number;
   ask_notes_count:       number;
   ai_suggest_count:      number;
+  plan_expires_at:       string | null;
 }
 
 export async function fetchUsage(): Promise<UsageSummary | null> {

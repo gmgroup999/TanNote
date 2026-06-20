@@ -38,6 +38,20 @@ function Bar({ label, used, limit, unit, plan }: {
   );
 }
 
+/** Human-readable plan expiry / renewal status. */
+function expiryStatus(plan: Plan, expiresAt: string | null): { text: string; warn: boolean } {
+  if (plan === 'pro' || plan === 'extra') return { text: 'ตลอดชีพ — ไม่มีวันหมดอายุ', warn: false };
+  if (plan === 'free') return { text: 'ฟรี — ไม่มีวันหมดอายุ', warn: false };
+  // starter (yearly)
+  if (!expiresAt) return { text: 'ไม่ระบุวันหมดอายุ', warn: false };
+  const d = new Date(expiresAt);
+  const dateStr = d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+  const days = Math.ceil((d.getTime() - Date.now()) / 86_400_000);
+  if (days < 0) return { text: `หมดอายุแล้ว (${dateStr})`, warn: true };
+  if (days === 0) return { text: `หมดอายุวันนี้ (${dateStr})`, warn: true };
+  return { text: `ครบกำหนด ${dateStr} · เหลือ ${days} วัน`, warn: days <= 7 };
+}
+
 export default function UsageIndicator({ onOpenPricing }: { onOpenPricing?: () => void }) {
   const [usage, setUsage]     = useState<UsageSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -90,6 +104,17 @@ export default function UsageIndicator({ onOpenPricing }: { onOpenPricing?: () =
         </span>
       </div>
 
+      {/* Plan expiry / renewal */}
+      {(() => {
+        const { text, warn } = expiryStatus(plan, usage.plan_expires_at);
+        return (
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="text-gray-400 dark:text-gray-500">📅 วันครบกำหนด:</span>
+            <span className={warn ? 'text-red-600 font-semibold' : 'text-gray-600 dark:text-gray-300'}>{text}</span>
+          </div>
+        );
+      })()}
+
       {/* Progress bars */}
       <div className="flex flex-col gap-2.5">
         <Bar
@@ -123,13 +148,13 @@ export default function UsageIndicator({ onOpenPricing }: { onOpenPricing?: () =
         </div>
       )}
 
-      {/* Upgrade button */}
-      {(plan === 'free' || plan === 'starter') && onOpenPricing && (
+      {/* View plans / upgrade — always available so users can find & change plan */}
+      {onOpenPricing && (
         <button
           onClick={onOpenPricing}
-          className="text-xs text-[#E24B4A] font-medium hover:underline text-left"
+          className="mt-1 w-full text-sm font-semibold text-white bg-[#E24B4A] hover:bg-[#cf3f3e] rounded-xl py-2.5 transition-colors"
         >
-          ดูแพลนทั้งหมด →
+          {plan === 'free' || plan === 'starter' ? 'ดูแพลน & อัปเกรด' : 'ดูแพลนทั้งหมด'}
         </button>
       )}
     </div>
