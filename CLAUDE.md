@@ -240,6 +240,12 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 - **หมายเหตุ**: SQL `get_current_usage`/`admin_list_users` ไม่มีบั๊กนี้ (ไม่คำนวณ limit; limit apply ฝั่ง client)
 - **Settings display "/ด." + "มิถุนายน"**: เป็น bundle เก่าค้าง cache บน device (production JS ปัจจุบันมี "ตลอดชีพ" ถูกแล้ว) → bump SW cache `v2`→`v3` บังคับ client โหลดใหม่
 
+### 🔴 Bug Fix — Export ใน LINE WebView (Android) เงียบสนิท
+ผู้ใช้กด .txt/.md/PDF ใน LINE in-app browser (Android) แล้ว **ไม่มีอะไรเกิดขึ้นเลย**
+- **Root cause**: LINE Android WebView ไม่มี `navigator.share`, block clipboard, ignore `<a download>` → ทุก path ล้มเงียบ → ตกไป `downloadBlob` ที่ WebView ไม่ทำอะไร
+- **Fix**: เพิ่ม `showContentOverlay()` ใน `export.ts` — overlay ในแอป (textarea เลือกได้ + ปุ่มคัดลอก + hint เปิดเบราว์เซอร์ภายนอก) ใช้เมื่อไม่มี share path (txt/md) และเมื่อ iframe print ใช้ไม่ได้ (PDF แสดง text + hint บันทึก PDF); desktop download เดิมไม่กระทบ
+- build + tsc สะอาด; commit `6f9e9c1` → push (frontend deploy ผ่าน Coolify)
+
 ### 🔵 set-webhook source เข้า repo
 - `npx supabase functions download set-webhook` → `supabase/functions/set-webhook/index.ts` (one-shot util ตั้ง LINE webhook endpoint URL); track ใน repo แล้ว
 
