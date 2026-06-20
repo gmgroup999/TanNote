@@ -84,7 +84,7 @@ export async function resolveLineUserId(
 
   // 3. Real LINE id without a token → can't prove ownership
   if (VALID_USER_ID.test(claimed)) {
-    const requireLineToken = (Deno.env.get("REQUIRE_LINE_TOKEN") ?? "false").toLowerCase() === "true";
+    const requireLineToken = (Deno.env.get("REQUIRE_LINE_TOKEN") ?? "false").trim().toLowerCase() === "true";
     if (requireLineToken) return { error: "กรุณาเปิดแอปผ่าน LINE", status: 401 };
     return { userId: claimed };
   }

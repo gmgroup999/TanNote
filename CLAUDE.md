@@ -203,7 +203,7 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 - **URL**: `https://czczwtjgmjnboeeibxcd.supabase.co`
 - **Production URL**: `https://tannote.z-node.cc` (deployed บน Z-Node/Coolify)
 - **Secrets set**: `GEMINI_API_KEY`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET` ✅ (อัปเดต 2026-06-11), `LINE_CHANNEL_ID=2010157477` ✅ (เพิ่ม 2026-06-11), `ADMIN_EMAILS`, `NODE_ID`, `ADMIN_LINE_USER_ID=U8414fbb78490e5c27a1b52ee7dc4593b` ✅
-- **Secret optional**: `REQUIRE_LINE_TOKEN` — ยังไม่ได้ set (default false). ตั้งเป็น `true` เมื่อยืนยัน LINE token flow บน device จริงแล้ว → บังคับ `U<32>` ต้องมี LIFF token (ปิด impersonation gap สำหรับ LINE class)
+- **Secret `REQUIRE_LINE_TOKEN=true`** ✅ (set 2026-06-20) — บังคับ `U<32>` ต้องส่ง LIFF token ที่ถูกต้อง ไม่งั้น 401 "กรุณาเปิดแอปผ่าน LINE" (ปิด impersonation gap สำหรับ LINE class). **⚠️ ผลข้างเคียง**: LINE user ที่เปิดนอก LINE client (token=null) จะใช้งานไม่ได้ — ต้องเปิดผ่าน LINE เท่านั้น. Rollback: `npx supabase secrets set REQUIRE_LINE_TOKEN=false`
 - **Functions deployed**: `transcribe`, `ask`, `send-reminders`, `line-webhook`, `save-memory`, `admin-api`, `patch-note`, `r2-backup`, `set-webhook` ✅ — ทั้งหมด ACTIVE (transcribe/ask/save-memory/patch-note redeployed 2026-06-20 auth-gap fix); `set-webhook` source ดึงเข้า repo แล้ว 2026-06-20 (`supabase/functions/set-webhook/index.ts`)
 - **Extensions enabled**: `pg_cron`, `pg_net`, `pgvector`
 - **pg_cron job**: schedule id 1 — ทุก 1 นาที → `send-reminders`; schedule `enforce-plan-expiry` — ทุกชั่วโมง → downgrade Starter ที่หมดอายุ
@@ -783,7 +783,9 @@ LINE in-app browser ละเลย `<a download>` + `window.open('_blank')` ค
 
 ### 🟢 auth gap (optional liffToken) — เสร็จแล้ว (2026-06-20)
 - `resolveLineUserId()` ปิด gap: `sa_<uuid>` บังคับ verify session JWT เสมอ; `U<32>` ไม่มี token → reject เมื่อ `REQUIRE_LINE_TOKEN=true`
-- **เหลือทำ**: set secret `REQUIRE_LINE_TOKEN=true` หลังยืนยัน LINE token flow บน device จริง (ตอนนี้ default off กัน lockout)
+- **Secret `REQUIRE_LINE_TOKEN=true` set แล้ว** ✅ — verified production: `U<32>` ไม่มี token → 401, `dev_` → ผ่าน (ask + patch-note)
+- **⚠️ ต้องทดสอบ device จริงด่วน**: LINE user ต้องส่ง LIFF token ได้จริงใน LINE client ไม่งั้น live user ถูก lockout (rollback: secret = false)
+- โค้ดอ่าน flag แบบ `.trim().toLowerCase()` กัน whitespace ใน secret value
 
 ### 🟢 set-webhook source — เสร็จแล้ว (2026-06-20)
 - ดึง source เข้า repo: `supabase/functions/set-webhook/index.ts` (one-shot util ตั้ง LINE webhook endpoint URL)
