@@ -68,6 +68,41 @@ async function pushText(to: string, text: string) {
   }).catch(() => {});
 }
 
+// ─── LINE push image (optionally with a caption) ────────────────────────────
+async function pushImage(to: string, imageUrl: string, caption?: string) {
+  if (!LINE_TOKEN || !to) return;
+  const messages: unknown[] = [];
+  if (caption) messages.push({ type: "text", text: caption });
+  messages.push({ type: "image", originalContentUrl: imageUrl, previewImageUrl: imageUrl });
+  await fetch("https://api.line.me/v2/bot/message/push", {
+    method:  "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${LINE_TOKEN}` },
+    body:    JSON.stringify({ to, messages }),
+  }).catch(() => {});
+}
+
+// ─── Download a LINE image message → upload to Supabase Storage → public URL ──
+// deno-lint-ignore no-explicit-any
+async function uploadSlip(supabase: any, messageId: string, lineUserId: string): Promise<string | null> {
+  if (!messageId) return null;
+  try {
+    const res = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
+      headers: { "Authorization": `Bearer ${LINE_TOKEN}` },
+    });
+    if (!res.ok) return null;
+    const buf  = new Uint8Array(await res.arrayBuffer());
+    const path = `${lineUserId}/${messageId}.jpg`;
+    const { error } = await supabase.storage.from("payment-slips").upload(path, buf, {
+      contentType: "image/jpeg", upsert: true,
+    });
+    if (error) { console.error("[slip] upload failed:", error.message); return null; }
+    return `${SUPABASE_URL}/storage/v1/object/public/payment-slips/${path}`;
+  } catch (e) {
+    console.error("[slip] error:", e);
+    return null;
+  }
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -145,15 +180,24 @@ Deno.serve(async (req: Request) => {
         "ขอบคุณที่ติดต่อมาค่ะ 🙏\n\nทีมงานได้รับข้อความของคุณแล้ว จะตรวจสอบสลิปและอัปเกรดแพลนให้ภายใน 24 ชั่วโมงนะคะ\n\nหากมีข้อสงสัยเพิ่มเติม ทีมงานจะติดต่อกลับค่ะ"
       );
 
-      // Push แจ้ง admin ทันที
+      // Push แจ้ง admin ทันที (พร้อม forward รูปสลิป + ชื่อ user)
       if (ADMIN_LINE_ID && lineUserId !== ADMIN_LINE_ID) {
-        const preview = msgType === "image"
-          ? "📷 ส่งรูปมา (น่าจะเป็นสลิป)"
-          : `💬 "${msgText.slice(0, 80)}"`;
-        await pushText(
-          ADMIN_LINE_ID,
-          `💰 มีแจ้งชำระเงิน!\n\nจาก LINE ID:\n${lineUserId}\n\n${preview}\n\n→ เปลี่ยน plan ได้ที่ Admin Panel`
-        );
+        const { data: prof } = await supabase
+          .from("users_profile")
+          .select("display_name, nickname, plan")
+          .eq("line_user_id", lineUserId)
+          .maybeSingle();
+        const who     = prof?.display_name || prof?.nickname || "(ไม่ทราบชื่อ)";
+        const planNow = prof?.plan ? `\nแผนปัจจุบัน: ${prof.plan}` : "";
+        const notice  = `💰 มีแจ้งชำระเงิน!\n\nจาก: ${who}${planNow}\nLINE ID: ${lineUserId}\n\n→ ตรวจสลิป แล้วเปลี่ยน plan ที่ Admin Panel`;
+
+        if (msgType === "image") {
+          const slipUrl = await uploadSlip(supabase, event.message?.id as string, lineUserId);
+          if (slipUrl) await pushImage(ADMIN_LINE_ID, slipUrl, notice);
+          else         await pushText(ADMIN_LINE_ID, `${notice}\n\n📷 (ดึงรูปสลิปไม่สำเร็จ — ขอสลิปจาก user โดยตรง)`);
+        } else {
+          await pushText(ADMIN_LINE_ID, `${notice}\n\n💬 "${msgText.slice(0, 80)}"`);
+        }
       }
       continue;
     }
