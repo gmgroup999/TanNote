@@ -30,7 +30,7 @@ export function currentPeriod(): string {
  * Quota window key per plan tier — MUST match period_for_plan() in
  * supabase/migrations (same output strings, Asia/Bangkok boundaries):
  *   free    → monthly  (YYYY-MM)
- *   starter → yearly   (Y{YYYY})
+ *   starter → monthly  (YYYY-MM, 199/month, plan_expires_at = +1 month)
  *   pro     → lifetime (recording capped at 2500 total)
  *   extra   → lifetime (unlimited anyway)
  */
@@ -40,9 +40,8 @@ export function periodForPlan(plan: string): string {
   }).formatToParts(new Date());
   const y = parts.find((p) => p.type === "year")!.value;
   const m = parts.find((p) => p.type === "month")!.value;
-  if (plan === "starter") return `Y${y}`;
   if (plan === "pro" || plan === "extra") return "lifetime";
-  return `${y}-${m}`;
+  return `${y}-${m}`; // free + starter = monthly
 }
 
 export function quotaExceededResponse(

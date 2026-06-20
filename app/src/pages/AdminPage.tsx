@@ -37,7 +37,7 @@ interface AdminUser {
 function computePlanExpiry(plan: string): string | null {
   if (plan === 'starter') {
     const d = new Date();
-    d.setFullYear(d.getFullYear() + 1);
+    d.setMonth(d.getMonth() + 1); // monthly subscription
     return d.toISOString();
   }
   return null;
@@ -457,7 +457,7 @@ export default function AdminPage({ session }: { session: Session }) {
                     className="text-xs rounded-lg border border-gray-200 dark:border-[#444448] bg-white dark:bg-[#1E1E20] text-gray-700 dark:text-gray-300 px-2 py-1 focus:outline-none disabled:opacity-50"
                   >
                     <option value="free">Free</option>
-                    <option value="starter">Starter +1ปี</option>
+                    <option value="starter">Starter +1เดือน</option>
                     <option value="pro">Pro ∞</option>
                     <option value="extra">Extra ∞</option>
                   </select>

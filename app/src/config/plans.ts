@@ -37,9 +37,8 @@ export const EARLY_BIRD_TAKEN = 0;
  *   pro/extra → lifetime cap ("ตลอดชีพ").
  */
 export function quotaPeriodLabel(plan: Plan): { suffix: string; lifetime: boolean } {
-  if (plan === 'starter')               return { suffix: '/ปี',  lifetime: false };
   if (plan === 'pro' || plan === 'extra') return { suffix: '',     lifetime: true  };
-  return { suffix: '/ด.', lifetime: false };
+  return { suffix: '/ด.', lifetime: false }; // free + starter = monthly
 }
 
 /** Returns usage color class based on percentage used */

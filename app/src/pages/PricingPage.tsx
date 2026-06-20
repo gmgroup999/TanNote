@@ -10,8 +10,7 @@ function formatLimit(val: number | null, unitBase: string, plan: Plan): string {
   if (val === null) return `∞ ${unitBase}`;
   const n = val.toLocaleString();
   if (plan === 'pro' || plan === 'extra') return `${n} ${unitBase} ตลอดชีพ`;
-  if (plan === 'starter')                 return `${n} ${unitBase}/ปี`;
-  return `${n} ${unitBase}/ด.`;
+  return `${n} ${unitBase}/ด.`; // free + starter = monthly
 }
 
 function CheckRow({ label, available = true }: { label: string; available?: boolean }) {

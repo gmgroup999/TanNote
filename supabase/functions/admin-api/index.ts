@@ -35,7 +35,7 @@ const VALID_PLANS = ["free", "starter", "pro", "extra"];
 function autoPlanExpiry(plan: string): string | null {
   if (plan === "starter") {
     const d = new Date();
-    d.setFullYear(d.getFullYear() + 1);
+    d.setMonth(d.getMonth() + 1); // monthly subscription
     return d.toISOString();
   }
   return null; // free, pro, extra = no expiry

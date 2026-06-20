@@ -96,9 +96,7 @@ export default function UsageIndicator({ onOpenPricing }: { onOpenPricing?: () =
           </span>
         </div>
         <span className="text-[10px] text-gray-400 dark:text-gray-600">
-          {plan === 'starter'
-            ? `ปี ${new Date().getFullYear() + 543}`
-            : (plan === 'pro' || plan === 'extra')
+          {(plan === 'pro' || plan === 'extra')
             ? 'ตลอดชีพ'
             : new Date().toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}
         </span>
