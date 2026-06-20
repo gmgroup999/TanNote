@@ -59,7 +59,10 @@
       }
 
       var mime = kind === 'md' ? 'text/markdown' : kind === 'html' ? 'text/html' : 'text/plain';
-      var url = URL.createObjectURL(new Blob([content], { type: mime + ';charset=utf-8' }));
+      // Prepend a UTF-8 BOM (U+FEFF) so Android/Windows text viewers detect UTF-8
+      // and render Thai correctly (without it they guess a single-byte encoding → mojibake).
+      var bytes = new TextEncoder().encode(String.fromCharCode(0xFEFF) + content);
+      var url = URL.createObjectURL(new Blob([bytes], { type: mime + ';charset=utf-8' }));
 
       function trigger() {
         var a = document.createElement('a');

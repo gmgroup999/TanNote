@@ -263,7 +263,9 @@ function saveOrShare(content: string, filename: string, mime: string) {
   }
 
   // Desktop and normal mobile browsers support <a download> directly.
-  downloadBlob(new Blob([content], { type: mime }), filename);
+  // Prepend a UTF-8 BOM so editors (e.g. Windows Notepad) render Thai correctly.
+  const withBom = new TextEncoder().encode('﻿' + content);
+  downloadBlob(new Blob([withBom], { type: `${mime};charset=utf-8` }), filename);
 }
 
 function safeFilename(title: string | undefined, ext: string): string {
