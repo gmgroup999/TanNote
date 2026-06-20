@@ -1,4 +1,5 @@
 import type { AudioRecord } from './db';
+import { openExternalBrowser } from './liff';
 
 function formatDateTH(d: Date) {
   return new Intl.DateTimeFormat('th-TH', {
@@ -117,8 +118,8 @@ function toBase64(s: string): string {
 const URL_PAYLOAD_LIMIT = 120000;
 
 /**
- * Hand the content to the external browser for a REAL download. LINE opens the
- * link in the system browser via ?openExternalBrowser=1; a tiny static page
+ * Hand the content to the external system browser for a REAL download. Inside
+ * LINE this uses liff.openWindow({external:true}); a tiny static page
  * (/download.html) reads the content from the URL fragment (never sent to the
  * server) and triggers the actual file download / PDF print there.
  * @returns false if the payload is too large for a URL (caller should fall back).
@@ -126,8 +127,11 @@ const URL_PAYLOAD_LIMIT = 120000;
 function externalDownload(content: string, filename: string, kind: 'txt' | 'md' | 'html' | 'pdf'): boolean {
   const b64 = toBase64(content);
   if (b64.length > URL_PAYLOAD_LIMIT) return false;
-  const url = `/download.html?openExternalBrowser=1#t=${kind}` +
+  const url = `${window.location.origin}/download.html#t=${kind}` +
     `&n=${encodeURIComponent(filename)}&d=${encodeURIComponent(b64)}`;
+  // Inside LINE → open the system browser via the LIFF API. If that isn't
+  // available (not in the LINE client), a normal navigation works in a real browser.
+  if (openExternalBrowser(url)) return true;
   window.location.href = url;
   return true;
 }

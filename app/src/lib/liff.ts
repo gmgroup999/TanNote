@@ -90,6 +90,25 @@ export async function loginWithLiff(): Promise<void> {
   }
 }
 
+/**
+ * Open a URL in the device's EXTERNAL system browser from inside the LINE app.
+ * Uses the official LIFF API (liff.openWindow with external:true) — the
+ * ?openExternalBrowser=1 query trick does NOT work for in-app same-origin
+ * navigation. Returns true if the external-browser open was issued.
+ */
+export function openExternalBrowser(url: string): boolean {
+  const abs = url.startsWith('http') ? url : `${window.location.origin}${url}`;
+  if (LIFF_ENABLED) {
+    try {
+      if (liff.isInClient()) {
+        liff.openWindow({ url: abs, external: true });
+        return true;
+      }
+    } catch { /* fall through to caller's fallback */ }
+  }
+  return false;
+}
+
 export function getLiffPictureUrl(): string | null {
   return localStorage.getItem(LINE_PICTURE_KEY);
 }
