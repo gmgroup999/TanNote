@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { listAudioRecordings, deleteAudio, updateAudioRecord, type AudioRecord, type StructuredTag, type ReminderItem } from '../lib/db';
 import { RECORDING_TYPES, type RecordingTypeKey } from '../config/recordingTypes';
 import { transcribeAudio, confirmNoteLink, deleteNote, deleteReminder, reprocessNote, patchNote, uploadR2Backup } from '../lib/api';
@@ -10,6 +10,32 @@ import { PLAN_LIMITS, type Plan } from '../config/plans';
 
 function formatTime(s: number) {
   return `${Math.floor(s / 60).toString().padStart(2, '0')}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
+}
+
+// ─── search / filter / date-group helpers ─────────────────────────────────────
+const DATE_GROUPS = ['วันนี้', 'เมื่อวาน', 'สัปดาห์นี้', 'เดือนนี้', 'เก่ากว่า'] as const;
+
+function dateGroupOf(d: Date): string {
+  const ts = new Date(d).getTime();
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startYesterday = startToday - 86_400_000;
+  const startWeek = startToday - ((now.getDay() + 6) % 7) * 86_400_000; // Monday-based
+  const startMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  if (ts >= startToday)     return 'วันนี้';
+  if (ts >= startYesterday) return 'เมื่อวาน';
+  if (ts >= startWeek)      return 'สัปดาห์นี้';
+  if (ts >= startMonth)     return 'เดือนนี้';
+  return 'เก่ากว่า';
+}
+
+/** Lower-cased searchable text across title, summary, transcript, points, tags. */
+function recordHaystack(r: AudioRecord): string {
+  return [
+    r.title, r.summary, r.transcript,
+    ...(r.keyPoints ?? []), ...(r.actions ?? []),
+    ...(r.structuredTags?.map((t) => t.name) ?? []), ...(r.hashtags ?? []),
+  ].filter(Boolean).join(' ').toLowerCase();
 }
 
 function formatDate(d: Date) {
@@ -629,6 +655,9 @@ export default function RecordingsPage({
   const [loading, setLoading] = useState(true);
   const [batchRunning, setBatchRunning] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [activeType, setActiveType] = useState<string | null>(null);
   const noteRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
@@ -723,6 +752,27 @@ export default function RecordingsPage({
 
   const selectedRecord = records.find((r) => r.id === selectedId) ?? null;
 
+  // ── search / filter / grouping ─────────────────────────────────────────────
+  const q = search.trim().toLowerCase();
+  const hasFilter = !!(q || activeTag || activeType);
+  const filtered = records.filter((r) => {
+    if (activeType && (r.detectedType ?? r.recordingType) !== activeType) return false;
+    if (activeTag && !(r.structuredTags?.some((t) => t.name === activeTag) || r.hashtags?.includes(activeTag))) return false;
+    if (q && !recordHaystack(r).includes(q)) return false;
+    return true;
+  });
+  const grouped = (() => {
+    const map = new Map<string, AudioRecord[]>();
+    for (const r of filtered) {
+      const g = dateGroupOf(r.createdAt);
+      const arr = map.get(g) ?? [];
+      arr.push(r);
+      map.set(g, arr);
+    }
+    return DATE_GROUPS.filter((g) => map.has(g)).map((g) => ({ label: g, items: map.get(g)! }));
+  })();
+  const clearFilters = () => { setSearch(''); setActiveTag(null); setActiveType(null); };
+
   // ── shared sub-sections ───────────────────────────────────────────────────
 
   const batchButton = pendingCount > 0 && (
@@ -750,25 +800,93 @@ export default function RecordingsPage({
   const hashtagCloud = allHashtags.length > 0 && (
     <div className="bg-white dark:bg-[#252527] rounded-2xl border border-gray-100 dark:border-[#333336] shadow-sm p-4">
       <p className="text-xs font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wide mb-2.5">
-        🕸️ หัวข้อทั้งหมด
+        🕸️ หัวข้อทั้งหมด {activeTag && <span className="text-[#E24B4A] normal-case">· กรอง: {activeTag}</span>}
       </p>
       <div className="flex flex-wrap gap-1.5">
         {allHashtags.map((tag) => {
           const count = records.filter((r) =>
             r.structuredTags?.some((t) => t.name === tag) || r.hashtags?.includes(tag)
           ).length;
+          const on = activeTag === tag;
           return (
-            <span key={tag}
-              className="text-xs bg-[#E24B4A]/8 text-[#E24B4A] rounded-full px-2.5 py-0.5 border border-[#E24B4A]/20"
+            <button key={tag}
+              onClick={() => setActiveTag(on ? null : tag)}
+              className={`text-xs rounded-full px-2.5 py-0.5 border transition-colors ${
+                on ? 'bg-[#E24B4A] text-white border-[#E24B4A]'
+                   : 'bg-[#E24B4A]/8 text-[#E24B4A] border-[#E24B4A]/20 hover:bg-[#E24B4A]/15'
+              }`}
               title={`${count} รายการ`}>
               {tag}
               {count > 1 && <span className="ml-1 opacity-60">×{count}</span>}
-            </span>
+            </button>
           );
         })}
       </div>
     </div>
   );
+
+  // Search box + type dropdown + active-filter chips (shared by both layouts)
+  const filterBar = records.length > 0 && (
+    <div className="flex flex-col gap-2">
+      <div className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">🔍</span>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="ค้นหา ชื่อ / สรุป / เนื้อหา / แท็ก…"
+          className="w-full rounded-xl border border-gray-200 dark:border-[#333336] bg-white dark:bg-[#252527] text-gray-800 dark:text-gray-100 pl-9 pr-8 py-2 text-sm focus:outline-none focus:border-[#E24B4A] dark:placeholder-gray-500"
+        />
+        {search && (
+          <button onClick={() => setSearch('')}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs">✕</button>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <select
+          value={activeType ?? ''}
+          onChange={(e) => setActiveType(e.target.value || null)}
+          className="flex-1 rounded-xl border border-gray-200 dark:border-[#333336] bg-white dark:bg-[#252527] text-gray-700 dark:text-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-[#E24B4A]"
+        >
+          <option value="">ทุกประเภท</option>
+          {Object.entries(RECORDING_TYPES).filter(([k]) => k !== 'auto').map(([k, v]) => (
+            <option key={k} value={k}>{v.label}</option>
+          ))}
+        </select>
+        {hasFilter && (
+          <button onClick={clearFilters}
+            className="text-xs text-[#E24B4A] font-medium whitespace-nowrap px-2 py-2 hover:underline">
+            ล้างตัวกรอง
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  // Count line — shows "พบ X จาก Y" when filtering, else "Y รายการ"
+  const countLine = (
+    <p className="text-xs text-gray-400 dark:text-gray-600">
+      {hasFilter ? `พบ ${filtered.length} จาก ${records.length} รายการ` : `${records.length} รายการ`}
+    </p>
+  );
+
+  const noResults = (
+    <div className="flex flex-col items-center justify-center py-16 gap-2 text-center">
+      <p className="text-gray-500 dark:text-gray-500 text-sm">ไม่พบรายการที่ตรงกับการค้นหา</p>
+      <button onClick={clearFilters} className="text-xs text-[#E24B4A] font-medium hover:underline">ล้างตัวกรอง</button>
+    </div>
+  );
+
+  // Render the filtered records grouped by date. `wrap` lets each layout style its items/spacing.
+  const renderGroups = (
+    itemGap: string,
+    renderItem: (r: AudioRecord) => ReactNode,
+  ) =>
+    grouped.map((g) => (
+      <div key={g.label} className={`flex flex-col ${itemGap}`}>
+        <p className="text-[11px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wide">{g.label}</p>
+        {g.items.map(renderItem)}
+      </div>
+    ));
 
   const emptyState = (
     <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
@@ -802,15 +920,22 @@ export default function RecordingsPage({
           ) : (
             <div className="flex-1 overflow-y-auto flex flex-col">
               {pendingCount > 0 && <div className="px-4 pt-1 pb-2">{batchButton}</div>}
-              <p className="text-xs text-gray-400 dark:text-gray-600 px-4 pb-2">{records.length} รายการ</p>
-              {records.map((r) => (
-                <CompactListItem
-                  key={r.id}
-                  record={r}
-                  selected={r.id === selectedId}
-                  onClick={() => setSelectedId(r.id)}
-                />
-              ))}
+              <div className="px-4 pb-2">{filterBar}</div>
+              <div className="px-4 pb-2">{countLine}</div>
+              {filtered.length === 0 ? (
+                <div className="px-4">{noResults}</div>
+              ) : (
+                <div className="flex flex-col gap-3 px-2">
+                  {renderGroups('', (r) => (
+                    <CompactListItem
+                      key={r.id}
+                      record={r}
+                      selected={r.id === selectedId}
+                      onClick={() => setSelectedId(r.id)}
+                    />
+                  ))}
+                </div>
+              )}
               {allHashtags.length > 0 && <div className="px-4 py-3">{hashtagCloud}</div>}
             </div>
           )}
@@ -850,8 +975,9 @@ export default function RecordingsPage({
           ) : (
             <>
               {batchButton}
-              <p className="text-xs text-gray-400 dark:text-gray-600">{records.length} รายการ</p>
-              {records.map((r) => (
+              {filterBar}
+              {countLine}
+              {filtered.length === 0 ? noResults : renderGroups('gap-4', (r) => (
                 <div key={r.id} ref={el => { noteRefs.current[r.id] = el; }} className="rounded-2xl transition-shadow duration-500">
                   <RecordingItem record={r} onDelete={handleDelete} onUpdate={handleUpdate} />
                 </div>
