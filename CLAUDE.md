@@ -258,6 +258,12 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 - **Verified**: migration applied · columns + unique index มีจริง · duplicate `trans_ref` ถูก reject จริง (0 test row ค้าง) · line-webhook deployed + ตอบ 200
 - **เปิดใช้เมื่อพร้อม**: สมัคร EasySlip → `npx supabase secrets set EASYSLIP_API_KEY=... PAYMENT_RECEIVER_NAME="<ชื่อบัญชี>"` → ทดสอบว่า badge ขึ้นถูก → ค่อยเปิด `SLIP_AUTO_APPROVE=true`
 
+### ⚠️ บทเรียน — `[skip deploy]` ที่ commit หัวของ push = ข้าม deploy **ทั้ง push**
+- Push `ca8f50a..3ea97bb` มี 3 commits; commit หัว (`3ea97bb` CLAUDE.md) ใส่ `[skip deploy]` → Z-Node ข้าม build ทั้งชุด
+- ยืนยันแล้ว: รอ 10 นาที bundle production ยังเป็น `index-8hUrEpo0.js` เดิม
+- **ผลลัพธ์: frontend ตามหลัง git 1 commit** — `AdminPage` badge ผลตรวจสลิป (`0d58c0c`) ยังไม่ขึ้น production (ผู้ใช้เลือกปล่อยไว้ ไปรวมกับ deploy ครั้งหน้า)
+- **กฎใหม่**: ถ้า push มีการแก้ frontend อยู่ด้วย → **อย่าวาง commit `[skip deploy]` ไว้ท้ายสุด** (commit CLAUDE.md ก่อน แล้วค่อย commit โค้ด หรือไม่ใส่ flag เลย)
+
 ### ไฟล์ที่แก้ไขวันนี้ (2026-07-22)
 | ไฟล์ | สิ่งที่เปลี่ยน |
 |---|---|
@@ -1058,5 +1064,6 @@ LINE in-app browser ละเลย `<a download>` + `window.open('_blank')` ค
 | PDF export | layout เพี้ยนบนมือถือ (print บีบคอลัมน์) → **ซ่อนปุ่มไว้** | `exportPdf` ยังอยู่ใน `export.ts`; ถ้าจะเปิดใหม่ต้องแก้ CSS print ก่อน |
 | ~~auth gap: optional liffToken~~ | **ปิดสมบูรณ์ 2026-06-20** — `resolveLineUserId()`: sa_ verify JWT เสมอ + `REQUIRE_LINE_TOKEN=true` (verified บน device) → ปลอมตัวไม่ได้ทั้ง email + LINE | ✅ |
 | Z-Node webhook deploy ไม่ decrypt | `runProductionDeploy` ใช้ `githubToken`/`envVars` แบบ encrypted → ถ้าแก้ env ผ่าน Z-Node dashboard จะ re-encrypt + คืน token → auto-deploy พัง | set `githubToken`=NULL + envVars plaintext ใน DB อีกครั้ง (repo public ไม่ต้องใช้ token); หรือแก้โค้ด platform ให้ decrypt |
+| frontend ตามหลัง git 1 commit | `AdminPage` badge ผลตรวจสลิป (commit `0d58c0c`) ยังไม่ deploy — push 2026-07-22 ถูกข้ามเพราะ commit หัวมี `[skip deploy]` | deploy ครั้งหน้าจะติดไปเอง (ไม่กระทบผู้ใช้ — badge ยังไม่มีข้อมูลจะแสดง) |
 | Device ที่ค้าง cache เก่า | HTTP cache เก่า (ก่อนใส่ no-cache headers) อาจยังค้างในบางเครื่อง | ปิด LINE สนิท+เปิดใหม่ 1 ครั้ง / clear cache (เกิดครั้งเดียว — no-cache + self-destruct SW กันซ้ำแล้ว) |
 | Quota: pro/extra user เดิม bucket รีเซ็ต | เปลี่ยน period key → lifetime bucket เริ่มที่ 0 (usage รายเดือนเก่าไม่ถูกนับต่อ) | ยอมรับได้ — extra=∞ ไม่กระทบ, pro = generous (ได้ 2500 เต็มนับจากนี้) |
