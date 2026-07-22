@@ -109,6 +109,12 @@ Deno.serve(async (req: Request) => {
     return respond({ error: "GEMINI_API_KEY ไม่ได้ตั้งค่าใน Supabase secrets" }, 500);
   }
 
+  // Tracked outside the try so the catch can mark the note as failed instead of
+  // leaving it stuck on "processing" forever (see migration 20260722000003).
+  let createdNoteId: string | null = null;
+  // deno-lint-ignore no-explicit-any
+  let dbClient: any = null;
+
   try {
     // ── 1. Parse request ────────────────────────────────────────────────────
     const formData    = await req.formData();
@@ -126,6 +132,7 @@ Deno.serve(async (req: Request) => {
 
     const ai        = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
     const supabase  = createClient(SUPABASE_URL, SUPABASE_SVC);
+    dbClient        = supabase;
 
     // Authenticate caller (LIFF token / email session JWT / sandbox)
     const auth = await resolveLineUserId(req, supabase, LINE_CHANNEL_ID);
@@ -204,6 +211,7 @@ Deno.serve(async (req: Request) => {
 
     if (noteErr) throw new Error(`DB insert failed: ${noteErr.message}`);
     const noteId = noteRow!.id as string;
+    createdNoteId = noteId;
 
     // ── 4. Prepare audio part (inline OR Files API) ─────────────────────────
     const audioBytes = new Uint8Array(await audioFile.arrayBuffer());
@@ -515,6 +523,17 @@ ${autoClause}${appointmentClause}
   } catch (err) {
     const message = err instanceof Error ? err.message : "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ";
     console.error("[transcribe]", message);
+
+    // A note row already exists whenever we got past step 3 — mark it failed so the
+    // user sees what happened and retention can reclaim it. Silence here is what let
+    // an expired GEMINI_API_KEY break four recordings unnoticed (2026-07-22).
+    if (createdNoteId && dbClient) {
+      await dbClient.from("notes")
+        .update({ status: "error", error_message: message.slice(0, 500) })
+        .eq("id", createdNoteId)
+        .then(undefined, () => {/* best effort — never mask the original error */});
+    }
+
     return respond({ error: message }, 500);
   }
 });
