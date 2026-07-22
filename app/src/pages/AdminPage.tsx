@@ -92,7 +92,20 @@ interface PaymentRequest {
   nickname: string | null;
   picture_url: string | null;
   current_plan: string | null;
+  trans_ref: string | null;
+  verify_status: 'verified' | 'duplicate' | 'mismatch' | 'failed' | null;
+  verified_amount: number | null;
+  verify_note: string | null;
 }
+
+// Machine verification badge — only rendered once a slip has actually been checked
+// (verify_status stays null while EASYSLIP_API_KEY is unset, i.e. manual-only flow).
+const VERIFY_BADGE: Record<string, { icon: string; cls: string }> = {
+  verified:  { icon: '✅', cls: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' },
+  duplicate: { icon: '🔁', cls: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' },
+  mismatch:  { icon: '⚠️', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
+  failed:    { icon: '❓', cls: 'bg-gray-100 text-gray-600 dark:bg-[#3A3A3D] dark:text-gray-300' },
+};
 
 export default function AdminPage({ session }: { session: Session }) {
   const [users,   setUsers]   = useState<AdminUser[]>([]);
@@ -282,6 +295,13 @@ export default function AdminPage({ session }: { session: Session }) {
                       {req.amount ? ` · ฿${req.amount}` : ''} · ปัจจุบัน: {req.current_plan ?? '-'}
                     </p>
                     <p className="text-[10px] text-gray-400 dark:text-gray-600">{new Date(req.created_at).toLocaleString('th-TH')}</p>
+                    {req.verify_status && (
+                      <p className={`inline-block mt-1 px-2 py-0.5 rounded text-[11px] ${VERIFY_BADGE[req.verify_status]?.cls ?? ''}`}>
+                        {VERIFY_BADGE[req.verify_status]?.icon} ตรวจสลิป: {req.verify_note ?? req.verify_status}
+                        {req.verified_amount != null ? ` · ฿${req.verified_amount}` : ''}
+                        {req.trans_ref ? ` · ${req.trans_ref}` : ''}
+                      </p>
+                    )}
                     {req.slip_url ? (
                       <a href={req.slip_url} target="_blank" rel="noreferrer">
                         <img src={req.slip_url} alt="slip" className="mt-2 max-h-44 rounded-lg border border-gray-200 dark:border-[#444448]" />

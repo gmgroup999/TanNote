@@ -9,6 +9,7 @@
  */
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { amountMatches, isSlipAutoApproveEnabled, verifySlipByUrl } from "../_shared/slip-verify.ts";
 
 const LINE_SECRET    = Deno.env.get("LINE_CHANNEL_SECRET")!;
 const LINE_TOKEN     = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN")!;
@@ -101,6 +102,84 @@ async function uploadSlip(supabase: any, messageId: string, lineUserId: string):
     console.error("[slip] error:", e);
     return null;
   }
+}
+
+// ─── Plan expiry (must mirror admin-api autoPlanExpiry) ─────────────────────
+function autoPlanExpiry(plan: string): string | null {
+  if (plan === "starter" || plan === "pro") {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1); // monthly subscription
+    return d.toISOString();
+  }
+  return null; // free, extra = no expiry
+}
+
+/**
+ * Machine-check the slip and record the verdict on the payment request.
+ * Returns a line to append to the admin notice, plus whether the plan was
+ * auto-granted (only when EASYSLIP_API_KEY *and* SLIP_AUTO_APPROVE are set and
+ * everything matched). With no key configured this is a no-op.
+ */
+// deno-lint-ignore no-explicit-any
+async function verifyAndMaybeApprove(
+  supabase: any,
+  requestId: string,
+  lineUserId: string,
+  slipUrl: string,
+  expectedPlan: string | null,
+  expectedAmount: number | null,
+): Promise<{ notice: string; approved: boolean }> {
+  const verdict = await verifySlipByUrl(slipUrl);
+  if (!verdict.enabled) return { notice: "", approved: false };
+
+  const okAmount = amountMatches(expectedAmount, verdict.amount);
+  const status   = verdict.ok && !okAmount ? "mismatch" : verdict.status;
+  const note     = verdict.ok && !okAmount
+    ? `ยอดไม่ตรง (สลิป ฿${verdict.amount ?? "-"} · ต้องชำระ ฿${expectedAmount ?? "-"})`
+    : verdict.note;
+
+  // trans_ref is uniquely indexed — a replayed slip fails here and stays pending.
+  const { error: upErr } = await supabase.from("payment_requests").update({
+    trans_ref:       verdict.transRef,
+    verify_status:   status,
+    verified_amount: verdict.amount,
+    verified_at:     new Date().toISOString(),
+    verify_note:     note,
+  }).eq("id", requestId);
+
+  if (upErr) {
+    const dup = /duplicate key|unique/i.test(upErr.message ?? "");
+    await supabase.from("payment_requests").update({
+      verify_status: dup ? "duplicate" : "failed",
+      verified_at:   new Date().toISOString(),
+      verify_note:   dup ? "เลขอ้างอิงสลิปซ้ำกับรายการก่อนหน้า" : upErr.message,
+    }).eq("id", requestId);
+    return { notice: `\n\n🔁 ตรวจสลิป: สลิปซ้ำ — ไม่อนุมัติอัตโนมัติ`, approved: false };
+  }
+
+  const icon = status === "verified" ? "✅" : status === "duplicate" ? "🔁" : "⚠️";
+  let notice = `\n\n${icon} ตรวจสลิป: ${note}` +
+               (verdict.transRef ? `\nอ้างอิง: ${verdict.transRef}` : "");
+
+  const canApprove = status === "verified" && okAmount && expectedPlan &&
+                     isSlipAutoApproveEnabled();
+  if (!canApprove) return { notice, approved: false };
+
+  const plan_expires_at = autoPlanExpiry(expectedPlan!);
+  const { error: planErr } = await supabase.from("users_profile")
+    .update({ plan: expectedPlan, plan_expires_at })
+    .eq("line_user_id", lineUserId);
+  if (planErr) return { notice: `${notice}\n(อัปเกรดอัตโนมัติไม่สำเร็จ: ${planErr.message})`, approved: false };
+
+  await supabase.from("payment_requests")
+    .update({ status: "approved", plan: expectedPlan, decided_at: new Date().toISOString() })
+    .eq("id", requestId);
+
+  await pushText(lineUserId,
+    `🎉 อัปเกรดเป็นแผน ${expectedPlan!.toUpperCase()} เรียบร้อยแล้ว!\nขอบคุณที่ใช้งาน TanNote ค่ะ 🙏`);
+
+  notice += `\n\n🤖 อนุมัติอัตโนมัติแล้ว → ${expectedPlan!.toUpperCase()}`;
+  return { notice, approved: true };
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -202,17 +281,33 @@ Deno.serve(async (req: Request) => {
             .order("created_at", { ascending: false })
             .limit(1)
             .maybeSingle();
+          let requestId: string | null = pr?.id ?? null;
           if (pr) {
             await supabase.from("payment_requests").update({ slip_url: slipUrl }).eq("id", pr.id);
           } else if (prof) {
             const { data: nodeRow } = await supabase.from("users_profile").select("node_id").eq("line_user_id", lineUserId).maybeSingle();
-            if (nodeRow?.node_id) await supabase.from("payment_requests").insert({ node_id: nodeRow.node_id, line_user_id: lineUserId, slip_url: slipUrl });
+            if (nodeRow?.node_id) {
+              const { data: newReq } = await supabase.from("payment_requests")
+                .insert({ node_id: nodeRow.node_id, line_user_id: lineUserId, slip_url: slipUrl })
+                .select("id").maybeSingle();
+              requestId = newReq?.id ?? null;
+            }
+          }
+
+          // Machine-check the slip when EASYSLIP_API_KEY is configured (no-op otherwise)
+          let verifyLine = "";
+          if (requestId && slipUrl) {
+            const v = await verifyAndMaybeApprove(
+              supabase, requestId, lineUserId, slipUrl,
+              pr?.plan ?? null, pr?.amount != null ? Number(pr.amount) : null,
+            );
+            verifyLine = v.notice;
           }
 
           const wants = pr?.plan
             ? `\n🎯 ขอแผน: ${String(pr.plan).toUpperCase()}${pr.amount ? ` (฿${pr.amount})` : ""}`
             : "\n🎯 ขอแผน: (ไม่ระบุ — เลือกในแผงอนุมัติ)";
-          const notice = `💰 มีแจ้งชำระเงิน!\n\nจาก: ${who}${planNow}${wants}\n\n→ อนุมัติได้เลยที่ Admin Panel (แผง "รออนุมัติ")`;
+          const notice = `💰 มีแจ้งชำระเงิน!\n\nจาก: ${who}${planNow}${wants}${verifyLine}\n\n→ อนุมัติได้เลยที่ Admin Panel (แผง "รออนุมัติ")`;
 
           if (slipUrl) await pushImage(ADMIN_LINE_ID, slipUrl, notice);
           else         await pushText(ADMIN_LINE_ID, `${notice}\n\n📷 (ดึงรูปสลิปไม่สำเร็จ)`);
