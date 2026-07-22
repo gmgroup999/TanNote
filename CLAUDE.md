@@ -216,6 +216,60 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 
 ---
 
+## สิ่งที่ทำวันนี้ (2026-07-22)
+
+### System Health Check (ห่างจาก session ก่อน 1 เดือน)
+| ตรวจ | ผล |
+|---|---|
+| Production `tannote.z-node.cc` | 200 · `Cache-Control: no-cache` ถูก · bundle `index-8hUrEpo0.js` ✅ |
+| Edge Functions | **9/9 ACTIVE** ✅ |
+| Secrets | ครบ 15 ตัว (รวม `REQUIRE_LINE_TOKEN`) ✅ |
+| pg_cron | 3 job active · 2 วันล่าสุด **succeeded 100%** (send-reminders 2880 runs, 0 failed) ✅ |
+| Migrations local↔remote | sync ครบ ✅ |
+| TypeScript build | exit 0 ✅ |
+| **การใช้งานจริง** | 8 users · 40 notes · **28 notes ใน 30 วัน** · โน้ตล่าสุด 2026-07-22 09:44 น. — มีคนใช้ต่อเนื่อง |
+
+### 🔴 Bug Fix — `enforce_plan_expiry()` ไม่ครอบ pro
+- **สาเหตุ**: pro เปลี่ยนเป็นรายเดือนเมื่อ 2026-06-20 (migration `20260620000006`) แต่ฟังก์ชัน cron ยัง `where plan = 'starter'` เท่านั้น → **pro ที่หมดอายุค้างเป็น 'pro' ใน `users_profile` ตลอดไป**
+- **ผลกระทบ**: quota **ไม่เคยรั่ว** — `transcribe`/`ask`/`get_current_usage` คำนวณ effective plan จาก `plan_expires_at` ทุก request อยู่แล้ว; ที่เพี้ยนคือ row ใน DB + Admin Panel โชว์ "Pro" ค้าง
+- **แก้**: migration `20260722000001` → `where plan in ('starter','pro')` (extra ไม่แตะ = lifetime เดียว)
+- **Verified**: ทดสอบใน transaction — pro หมดอายุ → `free` + `expires=null`, rollback สะอาด (0 leftover row) ✅
+
+### 🟢 ตรวจ quota รายเดือน (หลังข้ามเดือน)
+- `get_current_usage` ทุก user: free/pro → period `2026-07`, extra → `lifetime` — **รีเซ็ตเข้าเดือนใหม่ถูกต้อง** ✅
+- pro user ปัจจุบัน `plan_expires_at=null` (grandfathered) → ไม่หมดอายุจนกว่า admin re-assign
+- ยังไม่ได้ทดสอบ UI บน device (label "/ด." + 402 → PaymentModal)
+
+### 🟢 payment_requests — ไม่มีของค้าง
+- 3 rows ทั้งหมดจากการทดสอบ 06-20: approved 2 + superseded 1 · **pending = 0** → แผงรออนุมัติสะอาด ไม่ต้องเก็บกวาด
+
+### 🔒 ล้าง secret ออกจาก `.claude/settings.json`
+- พบ **22 permission entries** ฝัง secret ตัวจริง plaintext: Supabase access token (`sbp_`), LINE Channel Access Token, Gemini API key, anon key
+- ✅ ไม่เคยรั่วขึ้น GitHub (`.claude/` ถูก gitignore บรรทัด 23 + ไม่เคย track)
+- ลบทั้ง 22 entries (เหลือ 131) · JSON valid · สแกนซ้ำไม่เหลือ token · ลบไฟล์ backup ที่มีสำเนา secret ทิ้งด้วย
+- **⚠️ ค้าง**: ยังไม่ได้ rotate key ทั้ง 3 ตัว (Gemini / LINE token / Supabase access token)
+
+### 🟡 EasySlip auto-verify — เตรียมโครงไว้ **แต่ยังไม่เปิดใช้** (ผู้ใช้สั่งพักไว้ก่อน)
+โค้ดอยู่ในสถานะ **dormant**: ถ้าไม่มี secret `EASYSLIP_API_KEY` พฤติกรรมเหมือนเดิมทุกประการ (admin กดอนุมัติเอง)
+- `20260722000002_slip_verification.sql` — `trans_ref` + `verify_status`/`verified_amount`/`verified_at`/`verify_note` + **unique index กันสลิปซ้ำ** (`payment_requests_trans_ref_uniq`, partial where not null); `admin_list_payment_requests` คืน field ใหม่ (+ re-revoke จาก anon)
+- `_shared/slip-verify.ts` — เรียก `POST https://api.easyslip.com/v2/verify/bank` (สเปคจริงจาก doc: รองรับ `url`/`base64`/`payload` + `checkDuplicate`) ส่ง public URL ของสลิปตรง ๆ; รองรับ response ทั้งแบบ `data.rawSlip.*` และ flat; เช็คผู้รับผ่าน `PAYMENT_RECEIVER_NAME` (optional)
+- `line-webhook` — หลัง upload สลิป → verify → บันทึกผลลง payment_request → แนบผลตรวจในข้อความแจ้ง admin; **auto-approve ต้องเปิด 2 สวิตช์** (`EASYSLIP_API_KEY` + `SLIP_AUTO_APPROVE=true`) และต้องผ่านครบ (ไม่ duplicate + ผู้รับตรง + ยอด ≥ ราคา)
+- `AdminPage` — badge ✅ verified / 🔁 duplicate / ⚠️ mismatch / ❓ failed ในแผงรออนุมัติ
+- **Verified**: migration applied · columns + unique index มีจริง · duplicate `trans_ref` ถูก reject จริง (0 test row ค้าง) · line-webhook deployed + ตอบ 200
+- **เปิดใช้เมื่อพร้อม**: สมัคร EasySlip → `npx supabase secrets set EASYSLIP_API_KEY=... PAYMENT_RECEIVER_NAME="<ชื่อบัญชี>"` → ทดสอบว่า badge ขึ้นถูก → ค่อยเปิด `SLIP_AUTO_APPROVE=true`
+
+### ไฟล์ที่แก้ไขวันนี้ (2026-07-22)
+| ไฟล์ | สิ่งที่เปลี่ยน |
+|---|---|
+| `supabase/migrations/20260722000001_enforce_plan_expiry_pro.sql` | **ใหม่** — downgrade ครอบ starter+pro (deploy แล้ว) |
+| `supabase/migrations/20260722000002_slip_verification.sql` | **ใหม่** — slip verify columns + unique trans_ref + admin RPC v2 (deploy แล้ว, dormant) |
+| `supabase/functions/_shared/slip-verify.ts` | **ใหม่** — EasySlip client (no-op ถ้าไม่มี key) |
+| `supabase/functions/line-webhook/index.ts` | + `autoPlanExpiry()`, `verifyAndMaybeApprove()`; เก็บ requestId ตอน insert; แนบผลตรวจในแจ้ง admin (deployed) |
+| `app/src/pages/AdminPage.tsx` | + `VERIFY_BADGE` + แถบผลตรวจสลิปในแผงรออนุมัติ (**ยังไม่ deploy — รอ commit**) |
+| `.claude/settings.json` | ลบ 22 entries ที่ฝัง secret (ไม่อยู่ใน git) |
+
+---
+
 ## สิ่งที่ทำวันนี้ (2026-06-20)
 
 ### Commit ของค้าง 2026-06-12 (path revert + rich menu)
@@ -933,9 +987,15 @@ LINE in-app browser ละเลย `<a download>` + `window.open('_blank')` ค
 - Admin Panel โหลด user list ได้ปกติหลัง revoke admin RPC (service_role ทำงาน) ✅
 - เก็บกวาด: ลบ payment_request ทดสอบที่ค้าง (กดปฏิเสธใน Admin Panel)
 
-### 🟡 ต่อ auto-verify สลิป (EasySlip / SlipOK) — optional ระยะยาว
-- โครง `payment_requests` รองรับแล้ว: เปลี่ยนจาก admin กดอนุมัติ → auto-approve เมื่อ API ยืนยันสลิป (ยอดตรง + บัญชีถูก + เลขอ้างอิงไม่ซ้ำ)
-- ต้องสมัคร API (EasySlip มี free tier) + เก็บ transRef กันสลิปซ้ำ
+### 🟡 auto-verify สลิป (EasySlip) — **โครงเสร็จแล้ว รอเปิดใช้** (พักไว้ตามที่ผู้ใช้สั่ง 2026-07-22)
+- โค้ด + migration พร้อมและ deploy แล้ว แต่ **dormant**: ไม่มี `EASYSLIP_API_KEY` = พฤติกรรมเหมือนเดิม (admin กดอนุมัติเอง)
+- กันสลิปซ้ำด้วย unique `trans_ref` แล้ว (ทดสอบ reject จริง)
+- **เปิดใช้เมื่อพร้อม**: สมัคร EasySlip (มี free tier) → `npx supabase secrets set EASYSLIP_API_KEY=... PAYMENT_RECEIVER_NAME="<ชื่อบัญชี>"` → ดูว่า badge ผลตรวจขึ้นถูกใน Admin Panel → ค่อยเปิด `SLIP_AUTO_APPROVE=true`
+- ⚠️ AdminPage badge ยังไม่ deploy จนกว่าจะ commit + push
+
+### 🔴 Rotate secrets (ค้างจาก 2026-07-22)
+- Gemini API key / LINE Channel Access Token / Supabase access token (`sbp_`) เคยฝัง plaintext ใน `.claude/settings.json` — ลบออกแล้วแต่ยังไม่ rotate
+- ไม่เคยรั่วขึ้น GitHub (`.claude/` gitignored) แต่ตามกฎถือว่า exposed
 
 ### 🟡 ทดสอบ Quota/แพลน รายเดือน บน device จริง (หลังเปลี่ยน starter+pro เป็นรายเดือน)
 - starter: 800น./เดือน, pro: 2500น./เดือน + ask/suggest ∞, extra: ∞ ตลอดชีพ
@@ -989,7 +1049,7 @@ LINE in-app browser ละเลย `<a download>` + `window.open('_blank')` ค
 | Landing page ไม่ได้อยู่ที่ `/` ใน production | Z-Node/Coolify generate nginx ของตัวเอง — ไม่ใช้ `nginx.conf` ของ project; landing อยู่ที่ `/landing.html` | Serve React SPA ที่ `/` ต่อไป (ผู้ใช้เข้าผ่าน LINE LIFF ไม่ใช่ direct URL); หรือ integrate `landing.html` เข้า React Router เป็น route `/` |
 | รูปโปรไฟล์ user เก่าไม่มี | picture_url ว่างใน DB สำหรับ user ที่ยังไม่ได้บันทึกใหม่หลัง deploy | รอ user บันทึกเสียงครั้งใหม่ (transcribe upsert อัตโนมัติ) |
 | ไมโครโฟน ถามทุก session | Android WebView ไม่ persist mic permission ข้าม session — OS limitation | แก้ไม่ได้ใน code; user กด "อนุญาตเฉพาะครั้งนี้" ทุกครั้งที่เปิด LINE ใหม่ |
-| ระบบชำระเงิน auto-verify ยังไม่มี | มี **approval queue** แล้ว (forward สลิป + admin อนุมัติ 1 คลิก 2026-06-20); auto-verify (EasySlip) ยังไม่ทำ | ต่อ EasySlip → auto-approve (payment_requests รองรับแล้ว) |
+| ระบบชำระเงิน auto-verify ยังไม่เปิด | approval queue ใช้งานได้ (2026-06-20); **โครง EasySlip เสร็จ + deploy แล้ว 2026-07-22 แต่ dormant** (ไม่มี key = manual เหมือนเดิม) | สมัคร EasySlip → set `EASYSLIP_API_KEY` → ทดสอบ → เปิด `SLIP_AUTO_APPROVE=true` |
 | payment-slips bucket เป็น public | สลิปเก็บใน Supabase Storage public bucket (path = LINE ID + messageId เดายาก แต่เป็น public URL) | ถ้าต้องการ privacy สูง → เปลี่ยนเป็น signed URL + private bucket |
 | ~~admin RPC anon leak~~ | **แก้แล้ว 2026-06-20** — `admin_list_users`/`admin_list_payment_requests` เคย anon เรียกได้ (leak users/emails/slips) → revoke เหลือ service_role | verified anon → 401 ✅ |
 | LIFF token เป็น `null` นอก LINE client | `liff.getIDToken()` คืน null เมื่อเปิดในเบราว์เซอร์ปกติ — fallback ไปใช้ `x-line-user-id` จาก localStorage | ยอมรับ: browser testing ใช้ `dev_xxx` fallback; production ใช้ผ่าน LINE เท่านั้น |
