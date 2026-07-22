@@ -298,13 +298,29 @@ if (/\[(skip deploy|skip ci|no deploy|ci skip)\]/i.test(h))
 | `supabase/migrations/20260722000002_slip_verification.sql` | **ใหม่** — slip verify columns + unique trans_ref + admin RPC v2 (deploy แล้ว, dormant) |
 | `supabase/functions/_shared/slip-verify.ts` | **ใหม่** — EasySlip client (no-op ถ้าไม่มี key) |
 | `supabase/functions/line-webhook/index.ts` | + `autoPlanExpiry()`, `verifyAndMaybeApprove()`; เก็บ requestId ตอน insert; แนบผลตรวจในแจ้ง admin (deployed) |
-| `app/src/pages/AdminPage.tsx` | + `VERIFY_BADGE` + แถบผลตรวจสลิปในแผงรออนุมัติ (**ยังไม่ deploy — รอ commit**) |
+| `app/src/pages/AdminPage.tsx` | + `VERIFY_BADGE` + แถบผลตรวจสลิปในแผงรออนุมัติ (deploy แล้วรอบสุดท้าย) |
 | `.claude/settings.json` | ลบ 22 entries ที่ฝัง secret (ไม่อยู่ใน git) |
 | `supabase/functions/transcribe/index.ts` | + `createdNoteId`/`dbClient` นอก try; `catch` mark note `error` + `error_message` |
 | `supabase/migrations/20260722000003_note_failure_visibility.sql` | **ใหม่** — `error_message` column; `cleanup_expired_notes` ลบทุกสถานะ; retire 5 แถวผี |
 | `supabase/migrations/20260722000004_sweep_stuck_notes.sql` | **ใหม่** — `sweep_stuck_notes()` + cron ทุกชั่วโมง (กัน isolate ตาย) |
 | `.gitignore` | + `.env` (เดิมไม่ถูก ignore — เสี่ยง key หลุด) |
 | Supabase secret | `GEMINI_API_KEY` = key ใหม่ (key เก่าถูก Google revoke) |
+
+### Git commits วันนี้ (push origin/main ครบทั้งหมด ✅)
+| commit | เนื้อหา | deploy |
+|---|---|---|
+| `e7135e7` | Fix plan expiry: downgrade expired pro plans too | DB ✅ |
+| `0d58c0c` | EasySlip verification scaffold (dormant until key is set) | DB + line-webhook ✅ |
+| `3ea97bb` | CLAUDE.md session 2026-07-22 (มี skip marker) | — ถูก skip |
+| `455381e` | CLAUDE.md: บทเรียน skip marker (เผลอพิมพ์ marker ในหัวข้อ) | — ถูก skip อีก |
+| `20efff1` | gitignore: cover a root .env | — |
+| `5f9dabd` | Stop transcription failures from disappearing silently | transcribe + DB ✅ |
+| `a85520b` | CLAUDE.md: Gemini outage + silent-failure fix + Z-Node finding | **frontend SUCCESS** ✅ |
+
+### ✅ Deploy ยืนยันปลายวัน (หลักฐาน 2 ทาง)
+- bundle production `index-8hUrEpo0.js` → **`index-BklCSyBK.js`** · site HTTP 200
+- Z-Node deployment record: `2026-07-22 04:25:05 | SUCCESS | a85520b5` (ก่อนหน้าคือ 2026-06-20 — เว้น 1 เดือนเพราะ skip marker ล้วน ๆ)
+- **frontend ↔ git ตรงกันครบแล้ว** (badge ผลตรวจสลิปขึ้น production ด้วย)
 
 ---
 
@@ -1096,6 +1112,8 @@ LINE in-app browser ละเลย `<a download>` + `window.open('_blank')` ค
 | PDF export | layout เพี้ยนบนมือถือ (print บีบคอลัมน์) → **ซ่อนปุ่มไว้** | `exportPdf` ยังอยู่ใน `export.ts`; ถ้าจะเปิดใหม่ต้องแก้ CSS print ก่อน |
 | ~~auth gap: optional liffToken~~ | **ปิดสมบูรณ์ 2026-06-20** — `resolveLineUserId()`: sa_ verify JWT เสมอ + `REQUIRE_LINE_TOKEN=true` (verified บน device) → ปลอมตัวไม่ได้ทั้ง email + LINE | ✅ |
 | Z-Node webhook deploy ไม่ decrypt | `runProductionDeploy` ใช้ `githubToken`/`envVars` แบบ encrypted → ถ้าแก้ env ผ่าน Z-Node dashboard จะ re-encrypt + คืน token → auto-deploy พัง | set `githubToken`=NULL + envVars plaintext ใน DB อีกครั้ง (repo public ไม่ต้องใช้ token); หรือแก้โค้ด platform ให้ decrypt |
-| frontend ตามหลัง git 1 commit | `AdminPage` badge ผลตรวจสลิป (commit `0d58c0c`) ยังไม่ deploy — push 2026-07-22 ถูกข้ามเพราะ commit หัวมี `[skip deploy]` | deploy ครั้งหน้าจะติดไปเอง (ไม่กระทบผู้ใช้ — badge ยังไม่มีข้อมูลจะแสดง) |
+| ~~frontend ตามหลัง git~~ | **แก้แล้ว 2026-07-22 ปลายวัน** — deploy SUCCESS (`a85520b`), bundle `index-BklCSyBK.js`; สาเหตุคือ skip marker ในหัวข้อ commit ไม่ใช่ระบบพัง | ✅ |
+| GEMINI_API_KEY ถูก revoke ได้อีก | key เก่าน่าจะรั่วผ่าน `.claude/` ที่เคย commit ขึ้น GitHub → Google auto-revoke; key ใหม่ปลอดภัยตราบที่ไม่หลุด | `.env` + `.claude/` ถูก gitignore แล้ว; ถ้าถอดเสียงพังกะทันหันให้เช็ค key เป็นอย่างแรก (ทดสอบ: POST เสียงเข้า transcribe ด้วย `dev_` user) |
+| dev_ test user ปนในรายชื่อ | `dev_smoketest`, `dev_t`, `dev_healthcheck` (สร้าง 2026-06-20) ทำให้ยอด user ในสถิติเกินจริง 3 คน | ลบได้เมื่อสะดวก (ไม่มี note ผูกอยู่) |
 | Device ที่ค้าง cache เก่า | HTTP cache เก่า (ก่อนใส่ no-cache headers) อาจยังค้างในบางเครื่อง | ปิด LINE สนิท+เปิดใหม่ 1 ครั้ง / clear cache (เกิดครั้งเดียว — no-cache + self-destruct SW กันซ้ำแล้ว) |
 | Quota: pro/extra user เดิม bucket รีเซ็ต | เปลี่ยน period key → lifetime bucket เริ่มที่ 0 (usage รายเดือนเก่าไม่ถูกนับต่อ) | ยอมรับได้ — extra=∞ ไม่กระทบ, pro = generous (ได้ 2500 เต็มนับจากนี้) |
