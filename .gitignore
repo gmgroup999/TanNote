@@ -9,6 +9,7 @@ app/.vite/
 # Environment files (sensitive)
 app/.env.local
 app/.env.*.local
+.env
 .env.local
 
 # Supabase local
