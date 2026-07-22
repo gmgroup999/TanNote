@@ -258,11 +258,38 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 - **Verified**: migration applied · columns + unique index มีจริง · duplicate `trans_ref` ถูก reject จริง (0 test row ค้าง) · line-webhook deployed + ตอบ 200
 - **เปิดใช้เมื่อพร้อม**: สมัคร EasySlip → `npx supabase secrets set EASYSLIP_API_KEY=... PAYMENT_RECEIVER_NAME="<ชื่อบัญชี>"` → ทดสอบว่า badge ขึ้นถูก → ค่อยเปิด `SLIP_AUTO_APPROVE=true`
 
-### ⚠️ บทเรียน — `[skip deploy]` ที่ commit หัวของ push = ข้าม deploy **ทั้ง push**
-- Push `ca8f50a..3ea97bb` มี 3 commits; commit หัว (`3ea97bb` CLAUDE.md) ใส่ `[skip deploy]` → Z-Node ข้าม build ทั้งชุด
-- ยืนยันแล้ว: รอ 10 นาที bundle production ยังเป็น `index-8hUrEpo0.js` เดิม
-- **ผลลัพธ์: frontend ตามหลัง git 1 commit** — `AdminPage` badge ผลตรวจสลิป (`0d58c0c`) ยังไม่ขึ้น production (ผู้ใช้เลือกปล่อยไว้ ไปรวมกับ deploy ครั้งหน้า)
-- **กฎใหม่**: ถ้า push มีการแก้ frontend อยู่ด้วย → **อย่าวาง commit `[skip deploy]` ไว้ท้ายสุด** (commit CLAUDE.md ก่อน แล้วค่อย commit โค้ด หรือไม่ใส่ flag เลย)
+### 🚨 OUTAGE — `GEMINI_API_KEY` ใช้ไม่ได้ (ถอดเสียงพังเงียบ ๆ)
+- **อาการ**: user แผน pro อัดเสียง 4 ครั้งวันนี้ (09:43, 09:43, 09:44, 10:34) — **ล้มทุกครั้ง** ไม่มี transcript เลย
+- **สาเหตุ**: Google ตอบ `API key not valid. Please pass a valid API key.` (`API_KEY_INVALID`) — key เก่าถูก revoke (น่าจะเพราะเคยรั่ว: key นี้อยู่ plaintext ใน `.claude/settings.json` และ `.claude/` เคยถูก commit ขึ้น GitHub เมื่อ 2026-05-21 ก่อน rewrite history → Google สแกนเจอแล้ว auto-revoke)
+- **แก้**: ผู้ใช้สร้าง key ใหม่ (รูปแบบใหม่ของ Google ขึ้นต้น `AQ.` ยาว 53 ตัว) → `supabase secrets set GEMINI_API_KEY` → redeploy `transcribe`
+- **Verified**: POST ไฟล์เสียงจริงเข้า transcribe → ได้ `note_id` + transcript + `status=done` ✅ (ทดสอบด้วย sandbox `dev_` user แล้วลบข้อมูลทดสอบออกหมด)
+- **⚠️ บทเรียน**: ตอนเช้าผมรายงานว่า "3 โน้ตใน 24 ชม. = ระบบปกติ" — **ผิด** เพราะนับแถวใน DB โดยไม่ดู `status`/`transcript` โน้ตพวกนั้นค้าง `processing` ทั้งหมด → **นับ row ไม่ใช่หลักฐานว่าใช้งานได้**
+- **⚠️ `.env` ไม่เคยอยู่ใน `.gitignore`** (เพิ่งเพิ่มวันนี้) — ถ้าไม่เจอ key ใหม่มีสิทธิ์หลุด GitHub ซ้ำรอยเดิม
+- **⚠️ Supabase CLI พังถ้ามีไฟล์ `.env` ที่ root** — มัน auto-parse เป็น `KEY=VALUE` เจอ key ดิบแล้ว error `unexpected character '-'` ทำให้ deploy ไม่ผ่าน (ส่ง key ให้ Claude ใช้ path ใน scratchpad แทน)
+
+### 🔴 Bug Fix — transcribe ล้มแล้วเงียบ (note ค้าง `processing` ตลอดกาล)
+- **สาเหตุ**: `transcribe` insert note row (`status='processing'`) **ก่อน** เรียก Gemini แต่ block `catch` ไม่เคยแตะ row นั้น → ล้มเมื่อไหร่ = ค้างถาวร ผู้ใช้ไม่รู้ ระบบไม่เตือน
+- ซ้ำร้าย `cleanup_expired_notes()` ลบเฉพาะ `status='done'` → ผีเหล่านี้รอดนโยบาย retention ด้วย (เก่าสุดค้างมาตั้งแต่ 2026-05-24)
+- **แก้ 3 ชั้น**:
+  1. `transcribe` — track `createdNoteId` นอก `try`; ใน `catch` → update `status='error'` + `error_message` (migration เพิ่มคอลัมน์)
+  2. `cleanup_expired_notes()` — ลบโน้ตหมดอายุ **ทุกสถานะ** (`expires_at` คือกำหนดลบ ไม่เกี่ยวกับว่าทำเสร็จหรือไม่)
+  3. `sweep_stuck_notes()` + cron `sweep-stuck-notes` (ทุกชั่วโมง นาทีที่ 15) — กันกรณี **isolate ตายทั้งตัว** (timeout/OOM) ที่ `catch` ไม่มีทางทำงาน
+- **Verified**: บังคับให้ล้มด้วย mime type ที่ Gemini ไม่รับ → note ถูก mark `error` + เก็บสาเหตุจริง `Unsupported MIME type: application/x-not-audio` ✅ · `sweep_stuck_notes()` คืน 0 ตอนไม่มีของค้างเกิน 1 ชม. ✅
+- เก็บกวาดของเดิม: 5 แถวผี → `error` (แถวที่ 6 อายุ 40 นาที ปล่อยให้ sweeper เก็บเอง)
+
+### ⚠️ บทเรียน — คำว่า `skip deploy` ในวงเล็บเหลี่ยม บน commit **หัว** ของ push = ข้าม deploy ทั้ง push
+**โค้ดจริงของ Z-Node** (`/app/.next/server/app/api/webhooks/github/route.js` ใน container `znode-platform`):
+```js
+h = t.head_commit?.message ?? ""
+if (/\[(skip deploy|skip ci|no deploy|ci skip)\]/i.test(h))
+    return json({skipped:true, reason:"... found in commit message"})
+```
+- ดูเฉพาะ **head_commit** ของ push เท่านั้น (commit อื่นในชุดไม่มีผล)
+- Push 1 (03:31) head=`3ea97bb` มี marker จริง → ข้ามถูกต้อง
+- Push 2 (03:48) head=`455381e` — ผมเขียนคำว่า marker นั้น **เพื่ออธิบายบั๊ก** ในหัวข้อ commit → regex จับข้อความอธิบาย → **ข้าม deploy อีกรอบ** (ยิงเท้าตัวเอง)
+- **ยืนยันว่า auto-deploy ไม่ได้พัง**: GitHub delivery 2 ครั้งได้ 200 OK ทั้งคู่ · `deployBranch=main` + `githubToken=null` ยังถูก · endpoint 200 · ไม่มี deployment record ใหม่เลยเพราะถูก skip ตามสเปค
+- **กฎใหม่**: (1) อย่าวาง commit ที่มี marker ไว้ **ท้ายสุด** ของ push ที่มีการแก้ frontend (2) **ห้ามพิมพ์ marker นั้นแบบมีวงเล็บเหลี่ยมในหัวข้อ commit แม้แต่ตอนอธิบาย** — เขียนว่า `skip-deploy marker` แทน
+- วิธีดู deployment: `ssh -i ~/.ssh/hetzner_nt_node jack@195.201.81.33` → `docker exec -i znode-postgres psql -U znodeuser -d znodedb` (ตาราง `projects`, `deployments`; คอลัมน์ `startedAt`/`status`/`commitSha`)
 
 ### ไฟล์ที่แก้ไขวันนี้ (2026-07-22)
 | ไฟล์ | สิ่งที่เปลี่ยน |
@@ -273,6 +300,11 @@ extra(599): ∞ + cloud backup — **admin-only** (ซ่อนจาก Pricing
 | `supabase/functions/line-webhook/index.ts` | + `autoPlanExpiry()`, `verifyAndMaybeApprove()`; เก็บ requestId ตอน insert; แนบผลตรวจในแจ้ง admin (deployed) |
 | `app/src/pages/AdminPage.tsx` | + `VERIFY_BADGE` + แถบผลตรวจสลิปในแผงรออนุมัติ (**ยังไม่ deploy — รอ commit**) |
 | `.claude/settings.json` | ลบ 22 entries ที่ฝัง secret (ไม่อยู่ใน git) |
+| `supabase/functions/transcribe/index.ts` | + `createdNoteId`/`dbClient` นอก try; `catch` mark note `error` + `error_message` |
+| `supabase/migrations/20260722000003_note_failure_visibility.sql` | **ใหม่** — `error_message` column; `cleanup_expired_notes` ลบทุกสถานะ; retire 5 แถวผี |
+| `supabase/migrations/20260722000004_sweep_stuck_notes.sql` | **ใหม่** — `sweep_stuck_notes()` + cron ทุกชั่วโมง (กัน isolate ตาย) |
+| `.gitignore` | + `.env` (เดิมไม่ถูก ignore — เสี่ยง key หลุด) |
+| Supabase secret | `GEMINI_API_KEY` = key ใหม่ (key เก่าถูก Google revoke) |
 
 ---
 
